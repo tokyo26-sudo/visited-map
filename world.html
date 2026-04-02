@@ -159,7 +159,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.2.2</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.2.3</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -348,6 +348,11 @@ const NAME_TO_ISO2 = {
   'Taiwan, Province of China': 'TW',
   'Kosovo': 'XK',
   'N. Cyprus': 'CY',
+};
+
+// Natural Earth ne_10mで特殊なISO_A2コードを正規化
+const ISO2_NORMALIZE = {
+  'CN-TW': 'TW',
 };
 
 // =====================================================
@@ -813,6 +818,8 @@ function getIso2FromFeature(feature) {
     const name = feature.properties?.NAME || feature.properties?.name || '';
     iso2 = NAME_TO_ISO2[name] || '';
   }
+  // ne_10mの特殊コードを正規化（CN-TW→TW等）
+  if (ISO2_NORMALIZE[iso2]) iso2 = ISO2_NORMALIZE[iso2];
   return iso2;
 }
 
@@ -866,10 +873,7 @@ function detectCountriesFromPoints(displayPoints) {
       const engName = feature.properties?.NAME || feature.properties?.name || iso2;
       const resolved = getCountryName(iso2);
       const countryName = resolved !== null ? resolved : engName;
-      // デバッグ：台湾関連をログ
-      if (engName.includes('Taiwan') || engName.includes('taiwan') || iso2 === 'TW') {
-        console.log('[DEBUG Taiwan]', {iso2, engName, resolved, countryName, props: feature.properties});
-      }
+
       if (!foundCodes.has(iso2)) {
         foundCodes.add(iso2);
         codeSamplePoint.set(iso2, p);
