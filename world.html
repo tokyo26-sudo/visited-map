@@ -523,12 +523,91 @@ async function processFile(file) {
 }
 
 // =====================================================
+// ポイントインポリゴン判定（レイキャスト法）
+// =====================================================
+function pointInPolygon(lat, lon, coords) {
+  let inside = false;
+  for (let i = 0, j = coords.length - 1; i < coords.length; j = i++) {
+    const xi = coords[i][0], yi = coords[i][1];
+    const xj = coords[j][0], yj = coords[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function pointInFeature(lat, lon, feature) {
+  const geom = feature.geometry;
+  if (!geom) return false;
+  const check = (rings) => rings.some(ring => pointInPolygon(lat, lon, ring));
+  if (geom.type === 'Polygon') return check(geom.coordinates);
+  if (geom.type === 'MultiPolygon') return geom.coordinates.some(poly => check(poly));
+  return false;
+}
+
+function findCountryForPoint(lat, lon) {
+  if (!naturalEarthData || !naturalEarthData.features) return null;
+  for (const f of naturalEarthData.features) {
+    if (pointInFeature(lat, lon, f)) return f;
+  }
+  return null;
+}
+
+// =====================================================
+// 国ぬりつぶし自動判定（バッチ処理）
+// =====================================================
+let detectBatchTimer = null;
+
+function detectCountriesFromPoints(displayPoints) {
+  if (!naturalEarthData || !naturalEarthData.features) return;
+
+  // くにはんてい用サンプル（最大2000点）
+  const SAMPLE_STEP = Math.max(1, Math.floor(displayPoints.length / 2000));
+  const samples = displayPoints.filter((_, i) => i % SAMPLE_STEP === 0);
+
+  const foundCodes = new Set(visitedCountries.keys());
+  let idx = 0;
+  const BATCH = 200;
+
+  function runBatch() {
+    const end = Math.min(idx + BATCH, samples.length);
+    for (; idx < end; idx++) {
+      const p = samples[idx];
+      const feature = findCountryForPoint(p.lat, p.lon);
+      if (!feature) continue;
+      const iso2 = (feature.properties?.ISO_A2 || feature.properties?.iso_a2 || '').toUpperCase();
+      const name = feature.properties?.NAME || feature.properties?.name || '';
+      if (!iso2 || iso2 === '-1' || foundCodes.has(iso2)) continue;
+      foundCodes.add(iso2);
+      visitedCountries.set(iso2, {
+        name,
+        flag: countryCodeToFlag(iso2),
+        countryCode: iso2
+      });
+      highlightCountry(iso2);
+    }
+    updateCountryList();
+    updateStats();
+    if (idx < samples.length) {
+      setTimeout(runBatch, 0);
+    }
+  }
+  runBatch();
+}
+
+// =====================================================
 // マーカ再描画
 // =====================================================
 function rebuildMarkers() {
   if (!markersLayer) return;
   markersLayer.clearLayers();
   visitedCountries.clear();
+
+  // 国の塗りつぶしをリセット
+  if (countryFillLayer && naturalEarthData && naturalEarthData.type !== 'Topology') {
+    countryFillLayer.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5});
+  }
 
   // 全有効ファイルのポイントを統合・間引き
   let displayPoints = [];
@@ -538,7 +617,7 @@ function rebuildMarkers() {
     filtered.forEach(p => displayPoints.push({...p, fileId: f.id}));
   });
 
-  // 表示上限（多すぎるとブラウザが重くなるため）
+  // 表示上限
   const MAX_DISPLAY = 50000;
   if (displayPoints.length > MAX_DISPLAY) {
     const step = Math.ceil(displayPoints.length / MAX_DISPLAY);
@@ -560,7 +639,6 @@ function rebuildMarkers() {
         ? p.time.toLocaleDateString('ja-JP', {year:'numeric', month:'long', day:'numeric'})
         : '日時不明';
 
-      // まずローデイング表示
       const popup = L.popup({maxWidth: 240, className:'world-popup'})
         .setLatLng([p.lat, p.lon])
         .setContent(`
@@ -569,7 +647,6 @@ function rebuildMarkers() {
         `)
         .openOn(map);
 
-      // Nominatimで地名取得
       const geo = await reverseGeocode(p.lat, p.lon);
       popup.setContent(`
         <div class="popup-date">${dateStr}</div>
@@ -577,7 +654,7 @@ function rebuildMarkers() {
         <div class="popup-country">${countryCodeToFlag(geo.countryCode)} ${geo.country || ''}</div>
       `);
 
-      // 訪問国を登録
+      // ポップアップからも国登録（ポリゴンにない小さい島など対応）
       if (geo.countryCode && !visitedCountries.has(geo.countryCode)) {
         visitedCountries.set(geo.countryCode, {
           name: geo.country,
@@ -594,6 +671,12 @@ function rebuildMarkers() {
   });
 
   document.getElementById('s-points').textContent = displayPoints.length.toLocaleString();
+
+  // 国ポリゴン自動判定（バッチ）
+  if (displayPoints.length > 0) {
+    if (detectBatchTimer) clearTimeout(detectBatchTimer);
+    detectBatchTimer = setTimeout(() => detectCountriesFromPoints(displayPoints), 200);
+  }
 }
 
 // =====================================================
