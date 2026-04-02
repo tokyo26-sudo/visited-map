@@ -155,7 +155,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.0.1</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.0.3</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -559,6 +559,25 @@ function findCountryForPoint(lat, lon) {
 // =====================================================
 let detectBatchTimer = null;
 
+// 国コードごとのNominatim国名取得キャッシュ
+const countryNameCache = new Map();
+
+async function fetchCountryName(iso2, sampleLat, sampleLon) {
+  if (countryNameCache.has(iso2)) return countryNameCache.get(iso2);
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${sampleLat}&lon=${sampleLon}&format=json&accept-language=ja&zoom=3`;
+    const res = await fetch(url, {headers:{'User-Agent':'GPSVisualizer/1.0'}});
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const name = data.address?.country || '';
+    countryNameCache.set(iso2, name);
+    return name;
+  } catch(e) {
+    countryNameCache.set(iso2, '');
+    return '';
+  }
+}
+
 function detectCountriesFromPoints(displayPoints) {
   if (!naturalEarthData || !naturalEarthData.features) return;
 
@@ -567,6 +586,8 @@ function detectCountriesFromPoints(displayPoints) {
   const samples = displayPoints.filter((_, i) => i % SAMPLE_STEP === 0);
 
   const foundCodes = new Set(visitedCountries.keys());
+  // 国コードごとのサンプル座標（Nominatim用）
+  const codeSamplePoint = new Map();
   let idx = 0;
   const BATCH = 200;
 
@@ -577,11 +598,13 @@ function detectCountriesFromPoints(displayPoints) {
       const feature = findCountryForPoint(p.lat, p.lon);
       if (!feature) continue;
       const iso2 = (feature.properties?.ISO_A2 || feature.properties?.iso_a2 || '').toUpperCase();
-      const name = feature.properties?.NAME || feature.properties?.name || '';
       if (!iso2 || iso2 === '-1' || foundCodes.has(iso2)) continue;
       foundCodes.add(iso2);
+      codeSamplePoint.set(iso2, p);
+      // まず英語名で仮登録してハイライト
+      const engName = feature.properties?.NAME || feature.properties?.name || iso2;
       visitedCountries.set(iso2, {
-        name,
+        name: engName,
         flag: countryCodeToFlag(iso2),
         countryCode: iso2
       });
@@ -591,9 +614,33 @@ function detectCountriesFromPoints(displayPoints) {
     updateStats();
     if (idx < samples.length) {
       setTimeout(runBatch, 0);
+    } else {
+      // バッチ完了後、Nominatimで国名を日本語に更新
+      resolveCountryNamesJa(codeSamplePoint);
     }
   }
   runBatch();
+}
+
+// 国名をNominatimで日本語に一括更新（国ごとに1回だけ）
+async function resolveCountryNamesJa(codeSamplePoint) {
+  for (const [iso2, p] of codeSamplePoint.entries()) {
+    // すでにNominatimで取得済みならスキップ
+    if (countryNameCache.has(iso2)) {
+      const cached = countryNameCache.get(iso2);
+      if (cached && visitedCountries.has(iso2)) {
+        visitedCountries.get(iso2).name = cached;
+      }
+      continue;
+    }
+    const jaName = await fetchCountryName(iso2, p.lat, p.lon);
+    if (jaName && visitedCountries.has(iso2)) {
+      visitedCountries.get(iso2).name = jaName;
+    }
+    // Nominatimレートリミト対策（1秒待つ）
+    await new Promise(r => setTimeout(r, 1100));
+  }
+  updateCountryList();
 }
 
 // =====================================================
@@ -717,9 +764,11 @@ function updateStats() {
 let naturalEarthData = null;
 
 async function loadNaturalEarth() {
+  // ne_10m: もっとも細かいポリゴン（沖縄など離島も含む）
   const URLS = [
+    'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson',
+    'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson',
     'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson',
-    'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json',
   ];
 
   for (const url of URLS) {
