@@ -453,9 +453,21 @@ function parseGoogleTimeline(obj) {
     return points;
   }
 
-  // 旧形式 placeVisit / activitySegment
+  // 旧形式 placeVisit / activitySegment + location-history.json形式
   if (Array.isArray(obj)) {
     obj.forEach(item => {
+      // location-history.json形式 { visit: { topCandidate: { placeLocation: "geo:lat,lon" } } }
+      const visit = item.visit;
+      if (visit?.topCandidate?.placeLocation) {
+        const m = String(visit.topCandidate.placeLocation).match(/geo:([-\d.]+),([-\d.]+)/);
+        if (m) {
+          const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+          const time = item.startTime ? new Date(item.startTime) : null;
+          if (!isNaN(lat) && !isNaN(lon)) points.push({lat, lon, time});
+          return;
+        }
+      }
+      // 旧旧形式 placeVisit
       const pv = item.placeVisit;
       if (pv?.location?.latitudeE7) {
         points.push({
