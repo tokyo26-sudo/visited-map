@@ -159,7 +159,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.1.3</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.1.4</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -387,7 +387,7 @@ async function reverseGeocode(lat, lon) {
   if (nominatimCache.has(key)) return nominatimCache.get(key);
 
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ja`;
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=${nominatimLang}`;
     const res = await fetch(url, {headers:{'User-Agent':'GPSVisualizer/1.0'}});
     if (!res.ok) throw new Error('nominatim error');
     const data = await res.json();
@@ -845,8 +845,10 @@ function updateCountryList() {
       return (b.pointCount||0) - (a.pointCount||0);
     } else if (currentSort === 'ja') {
       return (a.name||'').localeCompare(b.name||'','ja');
-    } else { // en
-      return (a.nameEn||a.name||'').localeCompare(b.nameEn||b.name||'','en');
+    } else { // en: 英語名でソート（英語モードならnameが英語名のはず）
+      const nameA = CURRENT_LANG === 'en' ? (a.name||'') : (a.nameEn||a.name||'');
+      const nameB = CURRENT_LANG === 'en' ? (b.name||'') : (b.nameEn||b.name||'');
+      return nameA.localeCompare(nameB, 'en');
     }
   });
 
@@ -1131,14 +1133,17 @@ document.getElementById('lang-sel').addEventListener('change', async e => {
   CURRENT_LANG = newLang;
   nominatimLang = newLang;
 
-  // 英語モード → すでにnameEnがあるからすぐ切り替え可能
+  // 英語モード → nameEnにもどす（特別地域はREGION_NAMES.en）
   if (newLang === 'en') {
     for (const [iso2, entry] of visitedCountries.entries()) {
       const specialName = getRegionName(iso2); // REGION_NAMES.en
+      // nameEnがある→それをつかう、ない→REGION_NAMES.enをつかう、それもない→そのまま
       entry.name = specialName || entry.nameEn || entry.name;
       entry.nameFixed = !!specialName;
     }
     switchingEl.style.display = 'none';
+    // nominatimCacheもクリアしてポップアップも英語になるように
+    nominatimCache.clear();
     updateCountryList();
     return;
   }
