@@ -90,6 +90,12 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .speed-radio-item input{accent-color:var(--gold);cursor:pointer;}
 .speed-radio-item.active{color:var(--gold-lt);font-weight:700;}
 
+/* ソートバー */
+.sort-bar{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px;}
+.sort-btn{flex:1;min-width:0;padding:4px 2px;border-radius:5px;font-size:10px;font-family:var(--font);background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;text-align:center;}
+.sort-btn:hover{border-color:var(--gold);color:var(--gold-lt);}
+.sort-btn.active{border-color:var(--gold);color:var(--gold-lt);background:rgba(200,149,26,.1);font-weight:700;}
+
 /* 国リスト */
 .country-list{display:flex;flex-direction:column;gap:2px;padding:4px 0;}
 .country-item{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:4px;font-size:12px;cursor:pointer;transition:background .12s;}
@@ -155,7 +161,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.0.4</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.0.6</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -200,6 +206,12 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 
   <div class="sec">
     <div class="sec-h">🌏 訪れた国</div>
+    <div class="sort-bar">
+      <button class="sort-btn active" data-sort="date">📅 日付順</button>
+      <button class="sort-btn" data-sort="points">⏱ 滞在順</button>
+      <button class="sort-btn" data-sort="ja">あいう順</button>
+      <button class="sort-btn" data-sort="en">ABC順</button>
+    </div>
     <div id="country-list">
       <div class="country-empty"><span>🌍</span>GPSログデータを読み込むと<br>訪れた国が<br>ここに表示されます</div>
     </div>
@@ -659,9 +671,12 @@ function detectCountriesFromPoints(displayPoints) {
       const engName = feature.properties?.NAME || feature.properties?.name || iso2;
       visitedCountries.set(iso2, {
         name: specialName || engName,
+        nameEn: engName,
         flag: countryCodeToFlag(iso2),
         countryCode: iso2,
-        nameFixed: !!specialName
+        nameFixed: !!specialName,
+        firstVisit: p.time || null,
+        pointCount: 0
       });
       highlightCountry(iso2);
     }
@@ -670,6 +685,15 @@ function detectCountriesFromPoints(displayPoints) {
     if (idx < samples.length) {
       setTimeout(runBatch, 0);
     } else {
+      // pointCountを全ポイントから集計
+      for (const p of displayPoints) {
+        const feature = findCountryForPoint(p.lat, p.lon);
+        if (!feature) continue;
+        const iso2 = getIso2FromFeature(feature);
+        if (iso2 && visitedCountries.has(iso2)) {
+          visitedCountries.get(iso2).pointCount = (visitedCountries.get(iso2).pointCount||0) + 1;
+        }
+      }
       // バッチ完了後、Nominatimで国名を日本語に更新
       resolveCountryNamesJa(codeSamplePoint);
     }
@@ -763,7 +787,8 @@ function rebuildMarkers() {
         visitedCountries.set(geo.countryCode, {
           name: geo.country,
           flag: countryCodeToFlag(geo.countryCode),
-          countryCode: geo.countryCode
+          countryCode: geo.countryCode,
+          firstVisit: p.time || null
         });
         updateCountryList();
         updateStats();
@@ -793,10 +818,21 @@ function updateCountryList() {
     return;
   }
 
-  // アルファベット順ソート
-  const sorted = [...visitedCountries.values()].sort((a, b) =>
-    (a.name || '').localeCompare(b.name || '', 'ja')
-  );
+  const vals = [...visitedCountries.values()];
+  const sorted = vals.sort((a, b) => {
+    if (currentSort === 'date') {
+      if (!a.firstVisit && !b.firstVisit) return (a.name||'').localeCompare(b.name||'','ja');
+      if (!a.firstVisit) return 1;
+      if (!b.firstVisit) return -1;
+      return a.firstVisit - b.firstVisit;
+    } else if (currentSort === 'points') {
+      return (b.pointCount||0) - (a.pointCount||0);
+    } else if (currentSort === 'ja') {
+      return (a.name||'').localeCompare(b.name||'','ja');
+    } else { // en
+      return (a.nameEn||a.name||'').localeCompare(b.nameEn||b.name||'','en');
+    }
+  });
 
   el.innerHTML = `<div class="country-list">${
     sorted.map(c => `
@@ -1056,6 +1092,20 @@ function initMap() {
     }
   });
 }
+
+// =====================================================
+// ソートボタン
+// =====================================================
+let currentSort = 'date';
+
+document.querySelectorAll('.sort-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentSort = btn.dataset.sort;
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    updateCountryList();
+  });
+});
 
 // =====================================================
 // 起動
