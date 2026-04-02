@@ -155,7 +155,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.0.3</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.0.4</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -310,6 +310,48 @@ function countryCodeToFlag(code) {
     upper.charCodeAt(0) - 65 + 0x1F1E6,
     upper.charCodeAt(1) - 65 + 0x1F1E6
   );
+}
+
+// =====================================================
+// 言語設定・特別地域名テーブル
+// =====================================================
+const CURRENT_LANG = 'ja'; // あとでセレクタで切り替え可能にする
+
+const REGION_NAMES = {
+  ja: {
+    'TW': '台湾',
+    'HK': '香港',
+    'MO': 'マカオ',
+    'PS': 'パレスチナ',
+    'XK': 'コソボ',
+  },
+  en: {
+    'TW': 'Taiwan',
+    'HK': 'Hong Kong',
+    'MO': 'Macao',
+    'PS': 'Palestine',
+    'XK': 'Kosovo',
+  },
+  zh: {
+    'TW': '台灣',
+    'HK': '香港',
+    'MO': '澳門',
+    'PS': '巴勒斯坦',
+    'XK': '科索沃',
+  },
+};
+
+// Natural EarthのISO_A2が-1になる地域のNAMEから正しいコードに変換
+const NAME_TO_ISO2 = {
+  'Taiwan': 'TW',
+  'Taiwan, Province of China': 'TW',
+  'Kosovo': 'XK',
+  'N. Cyprus': 'CY', // 北キプロス→キプロスとして扱う
+};
+
+function getRegionName(iso2) {
+  const lang = CURRENT_LANG;
+  return (REGION_NAMES[lang] && REGION_NAMES[lang][iso2]) || null;
 }
 
 // =====================================================
@@ -554,6 +596,17 @@ function findCountryForPoint(lat, lon) {
   return null;
 }
 
+// featureからISO2コードを正規化して取得
+function getIso2FromFeature(feature) {
+  let iso2 = (feature.properties?.ISO_A2 || feature.properties?.iso_a2 || '').toUpperCase();
+  // -1の場合はNAMEから変換を試みる
+  if (!iso2 || iso2 === '-1') {
+    const name = feature.properties?.NAME || feature.properties?.name || '';
+    iso2 = NAME_TO_ISO2[name] || '';
+  }
+  return iso2;
+}
+
 // =====================================================
 // 国ぬりつぶし自動判定（バッチ処理）
 // =====================================================
@@ -597,16 +650,18 @@ function detectCountriesFromPoints(displayPoints) {
       const p = samples[idx];
       const feature = findCountryForPoint(p.lat, p.lon);
       if (!feature) continue;
-      const iso2 = (feature.properties?.ISO_A2 || feature.properties?.iso_a2 || '').toUpperCase();
+      const iso2 = getIso2FromFeature(feature);
       if (!iso2 || iso2 === '-1' || foundCodes.has(iso2)) continue;
       foundCodes.add(iso2);
       codeSamplePoint.set(iso2, p);
-      // まず英語名で仮登録してハイライト
+      // 特別地域は固定名、それ以外は英語名で仮登録
+      const specialName = getRegionName(iso2);
       const engName = feature.properties?.NAME || feature.properties?.name || iso2;
       visitedCountries.set(iso2, {
-        name: engName,
+        name: specialName || engName,
         flag: countryCodeToFlag(iso2),
-        countryCode: iso2
+        countryCode: iso2,
+        nameFixed: !!specialName
       });
       highlightCountry(iso2);
     }
@@ -625,6 +680,8 @@ function detectCountriesFromPoints(displayPoints) {
 // 国名をNominatimで日本語に一括更新（国ごとに1回だけ）
 async function resolveCountryNamesJa(codeSamplePoint) {
   for (const [iso2, p] of codeSamplePoint.entries()) {
+    // 特別地域（台湾・香港・マカオ等）は固定名なのでスキップ
+    if (visitedCountries.get(iso2)?.nameFixed) continue;
     // すでにNominatimで取得済みならスキップ
     if (countryNameCache.has(iso2)) {
       const cached = countryNameCache.get(iso2);
