@@ -159,7 +159,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.1.4</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.2.0</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -208,8 +208,8 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
       <select class="sel" id="sort-sel">
         <option value="date">📅 初訪問日順</option>
         <option value="points">⏱ 滞在時間順</option>
-        <option value="ja">50音順</option>
-        <option value="en">アルファベット順</option>
+        <option value="ja">［あ］50音順</option>
+        <option value="en">［A］アルファベット順</option>
       </select>
       <select class="sel" id="lang-sel">
         <option value="en">English</option>
@@ -338,46 +338,229 @@ function countryCodeToFlag(code) {
 }
 
 // =====================================================
-// 言語設定・特別地域名テーブル
+// 言語設定
 // =====================================================
 let CURRENT_LANG = 'en'; // デフォルトは英語
-
-const REGION_NAMES = {
-  ja: {
-    'TW': '台湾',
-    'HK': '香港',
-    'MO': 'マカオ',
-    'PS': 'パレスチナ',
-    'XK': 'コソボ',
-  },
-  en: {
-    'TW': 'Taiwan',
-    'HK': 'Hong Kong',
-    'MO': 'Macao',
-    'PS': 'Palestine',
-    'XK': 'Kosovo',
-  },
-  zh: {
-    'TW': '台灣',
-    'HK': '香港',
-    'MO': '澳門',
-    'PS': '巴勒斯坦',
-    'XK': '科索沃',
-  },
-};
 
 // Natural EarthのISO_A2が-1になる地域のNAMEから正しいコードに変換
 const NAME_TO_ISO2 = {
   'Taiwan': 'TW',
   'Taiwan, Province of China': 'TW',
   'Kosovo': 'XK',
-  'N. Cyprus': 'CY', // 北キプロス→キプロスとして扱う
+  'N. Cyprus': 'CY',
 };
 
-function getRegionName(iso2) {
-  const lang = CURRENT_LANG;
-  return (REGION_NAMES[lang] && REGION_NAMES[lang][iso2]) || null;
+// =====================================================
+// 全国名テーブル（ISO2 → {ja, en}）
+// Nominatimに頼らず、このテーブルから国名をとる
+// =====================================================
+const COUNTRY_NAMES = {
+  AF: {ja:'アフガニスタン', en:'Afghanistan'},
+  AL: {ja:'アルバニア', en:'Albania'},
+  DZ: {ja:'アルジェリア', en:'Algeria'},
+  AD: {ja:'アンドラ', en:'Andorra'},
+  AO: {ja:'アンゴラ', en:'Angola'},
+  AG: {ja:'アンティグア・バーブーダ', en:'Antigua and Barbuda'},
+  AR: {ja:'アルゼンチン', en:'Argentina'},
+  AM: {ja:'アルメニア', en:'Armenia'},
+  AU: {ja:'オーストラリア', en:'Australia'},
+  AT: {ja:'オーストリア', en:'Austria'},
+  AZ: {ja:'アゼルバイジャン', en:'Azerbaijan'},
+  BS: {ja:'バハマ', en:'Bahamas'},
+  BH: {ja:'バーレーン', en:'Bahrain'},
+  BD: {ja:'バングラデシュ', en:'Bangladesh'},
+  BB: {ja:'バルバドス', en:'Barbados'},
+  BY: {ja:'ベラルーシ', en:'Belarus'},
+  BE: {ja:'ベルギー', en:'Belgium'},
+  BZ: {ja:'ベリーズ', en:'Belize'},
+  BJ: {ja:'ベナン', en:'Benin'},
+  BT: {ja:'ブータン', en:'Bhutan'},
+  BO: {ja:'ボリビア', en:'Bolivia'},
+  BA: {ja:'ボスニア・ヘルツェゴビナ', en:'Bosnia and Herzegovina'},
+  BW: {ja:'ボツワナ', en:'Botswana'},
+  BR: {ja:'ブラジル', en:'Brazil'},
+  BN: {ja:'ブルネイ', en:'Brunei'},
+  BG: {ja:'ブルガリア', en:'Bulgaria'},
+  BF: {ja:'ブルキナファソ', en:'Burkina Faso'},
+  BI: {ja:'ブルンジ', en:'Burundi'},
+  CV: {ja:'カーボベルデ', en:'Cabo Verde'},
+  KH: {ja:'カンボジア', en:'Cambodia'},
+  CM: {ja:'カメルーン', en:'Cameroon'},
+  CA: {ja:'カナダ', en:'Canada'},
+  CF: {ja:'中央アフリカ共和国', en:'Central African Republic'},
+  TD: {ja:'チャド', en:'Chad'},
+  CL: {ja:'チリ', en:'Chile'},
+  CN: {ja:'中国', en:'China'},
+  CO: {ja:'コロンビア', en:'Colombia'},
+  KM: {ja:'コモロ', en:'Comoros'},
+  CG: {ja:'コンゴ共和国', en:'Congo'},
+  CD: {ja:'コンゴ民主共和国', en:'DR Congo'},
+  CR: {ja:'コスタリカ', en:'Costa Rica'},
+  HR: {ja:'クロアチア', en:'Croatia'},
+  CU: {ja:'キューバ', en:'Cuba'},
+  CY: {ja:'キプロス', en:'Cyprus'},
+  CZ: {ja:'チェコ', en:'Czech Republic'},
+  DK: {ja:'デンマーク', en:'Denmark'},
+  DJ: {ja:'ジブチ', en:'Djibouti'},
+  DM: {ja:'ドミニカ国', en:'Dominica'},
+  DO: {ja:'ドミニカ共和国', en:'Dominican Republic'},
+  EC: {ja:'エクアドル', en:'Ecuador'},
+  EG: {ja:'エジプト', en:'Egypt'},
+  SV: {ja:'エルサルバドル', en:'El Salvador'},
+  GQ: {ja:'赤道ギニア', en:'Equatorial Guinea'},
+  ER: {ja:'エリトリア', en:'Eritrea'},
+  EE: {ja:'エストニア', en:'Estonia'},
+  SZ: {ja:'エスワティニ', en:'Eswatini'},
+  ET: {ja:'エチオピア', en:'Ethiopia'},
+  FJ: {ja:'フィジー', en:'Fiji'},
+  FI: {ja:'フィンランド', en:'Finland'},
+  FR: {ja:'フランス', en:'France'},
+  GA: {ja:'ガボン', en:'Gabon'},
+  GM: {ja:'ガンビア', en:'Gambia'},
+  GE: {ja:'ジョージア', en:'Georgia'},
+  DE: {ja:'ドイツ', en:'Germany'},
+  GH: {ja:'ガーナ', en:'Ghana'},
+  GR: {ja:'ギリシャ', en:'Greece'},
+  GD: {ja:'グレナダ', en:'Grenada'},
+  GT: {ja:'グアテマラ', en:'Guatemala'},
+  GN: {ja:'ギニア', en:'Guinea'},
+  GW: {ja:'ギニアビサウ', en:'Guinea-Bissau'},
+  GY: {ja:'ガイアナ', en:'Guyana'},
+  HT: {ja:'ハイチ', en:'Haiti'},
+  HN: {ja:'ホンジュラス', en:'Honduras'},
+  HU: {ja:'ハンガリー', en:'Hungary'},
+  IS: {ja:'アイスランド', en:'Iceland'},
+  IN: {ja:'インド', en:'India'},
+  ID: {ja:'インドネシア', en:'Indonesia'},
+  IR: {ja:'イラン', en:'Iran'},
+  IQ: {ja:'イラク', en:'Iraq'},
+  IE: {ja:'アイルランド', en:'Ireland'},
+  IL: {ja:'イスラエル', en:'Israel'},
+  IT: {ja:'イタリア', en:'Italy'},
+  JM: {ja:'ジャマイカ', en:'Jamaica'},
+  JP: {ja:'日本', en:'Japan'},
+  JO: {ja:'ヨルダン', en:'Jordan'},
+  KZ: {ja:'カザフスタン', en:'Kazakhstan'},
+  KE: {ja:'ケニア', en:'Kenya'},
+  KI: {ja:'キリバス', en:'Kiribati'},
+  KP: {ja:'北朝鮮', en:'North Korea'},
+  KR: {ja:'韓国', en:'South Korea'},
+  KW: {ja:'クウェート', en:'Kuwait'},
+  KG: {ja:'キルギス', en:'Kyrgyzstan'},
+  LA: {ja:'ラオス', en:'Laos'},
+  LV: {ja:'ラトビア', en:'Latvia'},
+  LB: {ja:'レバノン', en:'Lebanon'},
+  LS: {ja:'レソト', en:'Lesotho'},
+  LR: {ja:'リベリア', en:'Liberia'},
+  LY: {ja:'リビア', en:'Libya'},
+  LI: {ja:'リヒテンシュタイン', en:'Liechtenstein'},
+  LT: {ja:'リトアニア', en:'Lithuania'},
+  LU: {ja:'ルクセンブルク', en:'Luxembourg'},
+  MG: {ja:'マダガスカル', en:'Madagascar'},
+  MW: {ja:'マラウイ', en:'Malawi'},
+  MY: {ja:'マレーシア', en:'Malaysia'},
+  MV: {ja:'モルディブ', en:'Maldives'},
+  ML: {ja:'マリ', en:'Mali'},
+  MT: {ja:'マルタ', en:'Malta'},
+  MH: {ja:'マーシャル諸島', en:'Marshall Islands'},
+  MR: {ja:'モーリタニア', en:'Mauritania'},
+  MU: {ja:'モーリシャス', en:'Mauritius'},
+  MX: {ja:'メキシコ', en:'Mexico'},
+  FM: {ja:'ミクロネシア', en:'Micronesia'},
+  MD: {ja:'モルドバ', en:'Moldova'},
+  MC: {ja:'モナコ', en:'Monaco'},
+  MN: {ja:'モンゴル', en:'Mongolia'},
+  ME: {ja:'モンテネグロ', en:'Montenegro'},
+  MA: {ja:'モロッコ', en:'Morocco'},
+  MZ: {ja:'モザンビーク', en:'Mozambique'},
+  MM: {ja:'ミャンマー', en:'Myanmar'},
+  NA: {ja:'ナミビア', en:'Namibia'},
+  NR: {ja:'ナウル', en:'Nauru'},
+  NP: {ja:'ネパール', en:'Nepal'},
+  NL: {ja:'オランダ', en:'Netherlands'},
+  NZ: {ja:'ニュージーランド', en:'New Zealand'},
+  NI: {ja:'ニカラグア', en:'Nicaragua'},
+  NE: {ja:'ニジェール', en:'Niger'},
+  NG: {ja:'ナイジェリア', en:'Nigeria'},
+  NO: {ja:'ノルウェー', en:'Norway'},
+  OM: {ja:'オマーン', en:'Oman'},
+  PK: {ja:'パキスタン', en:'Pakistan'},
+  PW: {ja:'パラオ', en:'Palau'},
+  PA: {ja:'パナマ', en:'Panama'},
+  PG: {ja:'パプアニューギニア', en:'Papua New Guinea'},
+  PY: {ja:'パラグアイ', en:'Paraguay'},
+  PE: {ja:'ペルー', en:'Peru'},
+  PH: {ja:'フィリピン', en:'Philippines'},
+  PL: {ja:'ポーランド', en:'Poland'},
+  PT: {ja:'ポルトガル', en:'Portugal'},
+  QA: {ja:'カタール', en:'Qatar'},
+  RO: {ja:'ルーマニア', en:'Romania'},
+  RU: {ja:'ロシア', en:'Russia'},
+  RW: {ja:'ルワンダ', en:'Rwanda'},
+  KN: {ja:'セントクリストファー・ネイビス', en:'Saint Kitts and Nevis'},
+  LC: {ja:'セントルシア', en:'Saint Lucia'},
+  VC: {ja:'セントビンセント・グレナディーン', en:'Saint Vincent and the Grenadines'},
+  WS: {ja:'サモア', en:'Samoa'},
+  SM: {ja:'サンマリノ', en:'San Marino'},
+  ST: {ja:'サントメ・プリンシペ', en:'Sao Tome and Principe'},
+  SA: {ja:'サウジアラビア', en:'Saudi Arabia'},
+  SN: {ja:'セネガル', en:'Senegal'},
+  RS: {ja:'セルビア', en:'Serbia'},
+  SC: {ja:'セーシェル', en:'Seychelles'},
+  SL: {ja:'シエラレオネ', en:'Sierra Leone'},
+  SG: {ja:'シンガポール', en:'Singapore'},
+  SK: {ja:'スロバキア', en:'Slovakia'},
+  SI: {ja:'スロベニア', en:'Slovenia'},
+  SB: {ja:'ソロモン諸島', en:'Solomon Islands'},
+  SO: {ja:'ソマリア', en:'Somalia'},
+  ZA: {ja:'南アフリカ', en:'South Africa'},
+  SS: {ja:'南スーダン', en:'South Sudan'},
+  ES: {ja:'スペイン', en:'Spain'},
+  LK: {ja:'スリランカ', en:'Sri Lanka'},
+  SD: {ja:'スーダン', en:'Sudan'},
+  SR: {ja:'スリナム', en:'Suriname'},
+  SE: {ja:'スウェーデン', en:'Sweden'},
+  CH: {ja:'スイス', en:'Switzerland'},
+  SY: {ja:'シリア', en:'Syria'},
+  TW: {ja:'台湾', en:'Taiwan'},
+  TJ: {ja:'タジキスタン', en:'Tajikistan'},
+  TZ: {ja:'タンザニア', en:'Tanzania'},
+  TH: {ja:'タイ', en:'Thailand'},
+  TL: {ja:'東ティモール', en:'Timor-Leste'},
+  TG: {ja:'トーゴ', en:'Togo'},
+  TO: {ja:'トンガ', en:'Tonga'},
+  TT: {ja:'トリニダード・トバゴ', en:'Trinidad and Tobago'},
+  TN: {ja:'チュニジア', en:'Tunisia'},
+  TR: {ja:'トルコ', en:'Turkey'},
+  TM: {ja:'トルクメニスタン', en:'Turkmenistan'},
+  TV: {ja:'ツバル', en:'Tuvalu'},
+  UG: {ja:'ウガンダ', en:'Uganda'},
+  UA: {ja:'ウクライナ', en:'Ukraine'},
+  AE: {ja:'アラブ首長国連邦', en:'United Arab Emirates'},
+  GB: {ja:'イギリス', en:'United Kingdom'},
+  US: {ja:'アメリカ', en:'United States'},
+  UY: {ja:'ウルグアイ', en:'Uruguay'},
+  UZ: {ja:'ウズベキスタン', en:'Uzbekistan'},
+  VU: {ja:'バヌアツ', en:'Vanuatu'},
+  VE: {ja:'ベネズエラ', en:'Venezuela'},
+  VN: {ja:'ベトナム', en:'Vietnam'},
+  YE: {ja:'イエメン', en:'Yemen'},
+  ZM: {ja:'ザンビア', en:'Zambia'},
+  ZW: {ja:'ジンバブエ', en:'Zimbabwe'},
+  // 特別地域
+  HK: {ja:'香港', en:'Hong Kong'},
+  MO: {ja:'マカオ', en:'Macao'},
+  PS: {ja:'パレスチナ', en:'Palestine'},
+  XK: {ja:'コソボ', en:'Kosovo'},
+};
+
+function getCountryName(iso2) {
+  if (!iso2) return '';
+  const entry = COUNTRY_NAMES[iso2.toUpperCase()];
+  if (entry) return entry[CURRENT_LANG] || entry.en || iso2;
+  return null; // テーブルにない→Natural Earthの英語名をつかう
 }
+
 
 // =====================================================
 // Nominatim リバスジオコーデイング（キャッシュつき）
@@ -387,7 +570,7 @@ async function reverseGeocode(lat, lon) {
   if (nominatimCache.has(key)) return nominatimCache.get(key);
 
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=${nominatimLang}`;
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ja`;
     const res = await fetch(url, {headers:{'User-Agent':'GPSVisualizer/1.0'}});
     if (!res.ok) throw new Error('nominatim error');
     const data = await res.json();
@@ -679,24 +862,21 @@ function detectCountriesFromPoints(displayPoints) {
       if (!feature) continue;
       const iso2 = getIso2FromFeature(feature);
       if (!iso2 || iso2 === '-1') continue;
-      const specialName = getRegionName(iso2);
       const engName = feature.properties?.NAME || feature.properties?.name || iso2;
+      const countryName = getCountryName(iso2) || engName;
       if (!foundCodes.has(iso2)) {
-        // 新しい国→登録
         foundCodes.add(iso2);
         codeSamplePoint.set(iso2, p);
         visitedCountries.set(iso2, {
-          name: specialName || engName,
-          nameEn: engName,
+          name: countryName,
+          nameEn: (COUNTRY_NAMES[iso2]?.en) || engName,
           flag: countryCodeToFlag(iso2),
           countryCode: iso2,
-          nameFixed: !!specialName,
           firstVisit: p.time || null,
           pointCount: 1
         });
         highlightCountry(iso2);
       } else {
-        // すでに登録済み→firstVisitを更新（より古ければ上書き）＋pointCount++
         const entry = visitedCountries.get(iso2);
         entry.pointCount = (entry.pointCount || 0) + 1;
         if (p.time && (!entry.firstVisit || p.time < entry.firstVisit)) {
@@ -717,26 +897,10 @@ function detectCountriesFromPoints(displayPoints) {
   runBatch();
 }
 
-// 国名をNominatimで日本語に一括更新（国ごとに1回だけ）
-async function resolveCountryNames(codeSamplePoint) {
-  for (const [iso2, p] of codeSamplePoint.entries()) {
-    // 特別地域（台湾・香港・マカオ等）は固定名なのでスキップ
-    if (visitedCountries.get(iso2)?.nameFixed) continue;
-    // すでにNominatimで取得済みならスキップ
-    if (countryNameCache.has(iso2)) {
-      const cached = countryNameCache.get(iso2);
-      if (cached && visitedCountries.has(iso2)) {
-        visitedCountries.get(iso2).name = cached;
-      }
-      continue;
-    }
-    const jaName = await fetchCountryName(iso2, p.lat, p.lon);
-    if (jaName && visitedCountries.has(iso2)) {
-      visitedCountries.get(iso2).name = jaName;
-    }
-    // Nominatimレートリミト対策（1秒待つ）
-    await new Promise(r => setTimeout(r, 1100));
-  }
+// 国名はCOUNTRY_NAMESテーブルからとるのでNominatim不要
+// この関数はテーブルにない国だけフォールバックとして残す
+function resolveCountryNames(codeSamplePoint) {
+  // テーブルにない国はnameEnをそのままつかう（すでに登録済み）
   updateCountryList();
 }
 
@@ -845,10 +1009,8 @@ function updateCountryList() {
       return (b.pointCount||0) - (a.pointCount||0);
     } else if (currentSort === 'ja') {
       return (a.name||'').localeCompare(b.name||'','ja');
-    } else { // en: 英語名でソート（英語モードならnameが英語名のはず）
-      const nameA = CURRENT_LANG === 'en' ? (a.name||'') : (a.nameEn||a.name||'');
-      const nameB = CURRENT_LANG === 'en' ? (b.name||'') : (b.nameEn||b.name||'');
-      return nameA.localeCompare(nameB, 'en');
+    } else { // en
+      return (a.nameEn||a.name||'').localeCompare(b.nameEn||b.name||'','en');
     }
   });
 
@@ -1121,70 +1283,28 @@ document.getElementById('sort-sel').addEventListener('change', e => {
   updateCountryList();
 });
 
-document.getElementById('lang-sel').addEventListener('change', async e => {
+document.getElementById('lang-sel').addEventListener('change', e => {
   const newLang = e.target.value;
   if (newLang === CURRENT_LANG) return;
 
-  // 切り替え中表示
-  const switchingEl = document.getElementById('country-switching');
-  const listEl = document.getElementById('country-list');
-  switchingEl.style.display = 'block';
-
   CURRENT_LANG = newLang;
   nominatimLang = newLang;
+  nominatimCache.clear();
 
-  // 英語モード → nameEnにもどす（特別地域はREGION_NAMES.en）
-  if (newLang === 'en') {
-    for (const [iso2, entry] of visitedCountries.entries()) {
-      const specialName = getRegionName(iso2); // REGION_NAMES.en
-      // nameEnがある→それをつかう、ない→REGION_NAMES.enをつかう、それもない→そのまま
-      entry.name = specialName || entry.nameEn || entry.name;
-      entry.nameFixed = !!specialName;
-    }
-    switchingEl.style.display = 'none';
-    // nominatimCacheもクリアしてポップアップも英語になるように
-    nominatimCache.clear();
-    updateCountryList();
-    return;
-  }
-
-  // 日本語モード → キャシュになければNominatimによぶ
-  // まずキャシュありの国だけ先に更新して表示
-  const needFetch = [];
+  // COUNTRY_NAMESテーブルから国名をきりかえるだけ、すぐおわる
   for (const [iso2, entry] of visitedCountries.entries()) {
-    const specialName = getRegionName(iso2); // REGION_NAMES.ja
-    if (specialName) {
-      entry.name = specialName;
-      entry.nameFixed = true;
-    } else if (countryNameCache.has(iso2)) {
-      entry.name = countryNameCache.get(iso2) || entry.nameEn || entry.name;
-    } else {
-      needFetch.push(iso2);
-    }
+    entry.name = getCountryName(iso2) || entry.nameEn || entry.name;
   }
 
-  if (!needFetch.length) {
-    switchingEl.style.display = 'none';
-    updateCountryList();
-    return;
+  // 50音順optionのグレーアウト
+  const jaOpt = document.querySelector('#sort-sel option[value="ja"]');
+  if (jaOpt) jaOpt.disabled = (newLang !== 'ja');
+  // 英語モードで50音順が選ばれてたらアルファベット順にきりかえ
+  if (newLang !== 'ja' && currentSort === 'ja') {
+    currentSort = 'en';
+    document.getElementById('sort-sel').value = 'en';
   }
 
-  // Nominatimでまだとれてない国だけよぶ
-  // codeSamplePointはスコープ外なのでnominatimCacheからざひょうをとる
-  for (const iso2 of needFetch) {
-    const cached = [...nominatimCache.entries()].find(([k, v]) =>
-      (v.countryCode || '').toUpperCase() === iso2
-    );
-    if (cached) {
-      const jaName = await fetchCountryName(iso2, ...cached[0].split(',').map(Number));
-      if (jaName && visitedCountries.has(iso2)) {
-        visitedCountries.get(iso2).name = jaName;
-      }
-    }
-    await new Promise(r => setTimeout(r, 1100));
-  }
-
-  switchingEl.style.display = 'none';
   updateCountryList();
 });
 
