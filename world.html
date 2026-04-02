@@ -159,7 +159,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.2.0</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.2.1</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -212,7 +212,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
         <option value="en">［A］アルファベット順</option>
       </select>
       <select class="sel" id="lang-sel">
-        <option value="en">English</option>
+        <option value="en" selected>English</option>
         <option value="ja">日本語</option>
       </select>
     </div>
@@ -556,7 +556,8 @@ const COUNTRY_NAMES = {
 
 function getCountryName(iso2) {
   if (!iso2) return '';
-  const entry = COUNTRY_NAMES[iso2.toUpperCase()];
+  const key = iso2.trim().toUpperCase();
+  const entry = COUNTRY_NAMES[key];
   if (entry) return entry[CURRENT_LANG] || entry.en || iso2;
   return null; // テーブルにない→Natural Earthの英語名をつかう
 }
@@ -1311,6 +1312,12 @@ document.getElementById('lang-sel').addEventListener('change', e => {
 // =====================================================
 // 起動
 // =====================================================
+// 初期状態：英語モードなので50音順をグレーアウト
+document.addEventListener('DOMContentLoaded', () => {
+  const jaOpt = document.querySelector('#sort-sel option[value="ja"]');
+  if (jaOpt) jaOpt.disabled = true;
+});
+
 initMap();
 </script>
 </body>
