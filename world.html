@@ -159,7 +159,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.1.0</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.1.2</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -215,6 +215,10 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
         <option value="en">English</option>
         <option value="ja">日本語</option>
       </select>
+    </div>
+    <div id="country-switching" style="display:none;font-size:11px;color:var(--muted);text-align:center;padding:10px 0;">
+      <div class="spin" style="width:18px;height:18px;border-width:2px;margin:0 auto 6px;"></div>
+      表示を切り替え中...
     </div>
     <div id="country-list">
       <div class="country-empty"><span>🌍</span>GPSログデータを読み込むと<br>訪れた国が<br>ここに表示されます</div>
@@ -319,9 +323,15 @@ function filterPoints(points, maxKmh) {
 // =====================================================
 // 国コード→旗絵文字
 // =====================================================
+// OSがサポートしない国旗の直接マッピング
+const FLAG_OVERRIDE = {
+  'TW': '🇹🇼',
+};
+
 function countryCodeToFlag(code) {
   if (!code || code.length !== 2) return '🏳';
   const upper = code.toUpperCase();
+  if (FLAG_OVERRIDE[upper]) return FLAG_OVERRIDE[upper];
   return String.fromCodePoint(
     upper.charCodeAt(0) - 65 + 0x1F1E6,
     upper.charCodeAt(1) - 65 + 0x1F1E6
@@ -1111,38 +1121,70 @@ document.getElementById('sort-sel').addEventListener('change', e => {
 });
 
 document.getElementById('lang-sel').addEventListener('change', async e => {
-  CURRENT_LANG = e.target.value;
-  // 特別地域の名前をげんごにあわせて更新
+  const newLang = e.target.value;
+  if (newLang === CURRENT_LANG) return;
+
+  // 切り替え中表示
+  const switchingEl = document.getElementById('country-switching');
+  const listEl = document.getElementById('country-list');
+  switchingEl.style.display = 'block';
+  listEl.style.display = 'none';
+
+  CURRENT_LANG = newLang;
+  nominatimLang = newLang;
+
+  // 英語モード → すでにnameEnがあるからすぐ切り替え可能
+  if (newLang === 'en') {
+    for (const [iso2, entry] of visitedCountries.entries()) {
+      const specialName = getRegionName(iso2); // REGION_NAMES.en
+      entry.name = specialName || entry.nameEn || entry.name;
+      entry.nameFixed = !!specialName;
+    }
+    switchingEl.style.display = 'none';
+    listEl.style.display = '';
+    updateCountryList();
+    return;
+  }
+
+  // 日本語モード → キャシュになければNominatimによぶ
+  // まずキャシュありの国だけ先に更新して表示
+  const needFetch = [];
   for (const [iso2, entry] of visitedCountries.entries()) {
-    const specialName = getRegionName(iso2);
+    const specialName = getRegionName(iso2); // REGION_NAMES.ja
     if (specialName) {
       entry.name = specialName;
       entry.nameFixed = true;
-    } else if (CURRENT_LANG === 'en') {
-      // 英語モード→英語名にもどす
-      entry.name = entry.nameEn || entry.name;
-      entry.nameFixed = false;
+    } else if (countryNameCache.has(iso2)) {
+      entry.name = countryNameCache.get(iso2) || entry.nameEn || entry.name;
     } else {
-      // 日本語モード→Nominatimで取得した日本語名があればつかう
-      const jaName = countryNameCache.get(iso2);
-      if (jaName) {
-        entry.name = jaName;
-      } else {
-        // まだとれてなければNominatimによぶ（キャシュなし）
-        // codeSamplePointはスコープ外なので座標はentryにないが
-        // ポップアップでとれたものはnominatimCacheにある
-        const cached = [...nominatimCache.entries()].find(([k, v]) =>
-          v.countryCode === iso2
-        );
-        if (cached) {
-          entry.name = cached[1].country || entry.name;
-        }
-      }
+      needFetch.push(iso2);
     }
   }
-  // Nominatimのaccept-languageをかえてキャシュをリセット
-  nominatimLang = CURRENT_LANG;
-  countryNameCache.clear();
+
+  if (!needFetch.length) {
+    switchingEl.style.display = 'none';
+    listEl.style.display = '';
+    updateCountryList();
+    return;
+  }
+
+  // Nominatimでまだとれてない国だけよぶ
+  // codeSamplePointはスコープ外なのでnominatimCacheからざひょうをとる
+  for (const iso2 of needFetch) {
+    const cached = [...nominatimCache.entries()].find(([k, v]) =>
+      (v.countryCode || '').toUpperCase() === iso2
+    );
+    if (cached) {
+      const jaName = await fetchCountryName(iso2, ...cached[0].split(',').map(Number));
+      if (jaName && visitedCountries.has(iso2)) {
+        visitedCountries.get(iso2).name = jaName;
+      }
+    }
+    await new Promise(r => setTimeout(r, 1100));
+  }
+
+  switchingEl.style.display = 'none';
+  listEl.style.display = '';
   updateCountryList();
 });
 
