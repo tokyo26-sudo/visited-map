@@ -90,11 +90,9 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .speed-radio-item input{accent-color:var(--gold);cursor:pointer;}
 .speed-radio-item.active{color:var(--gold-lt);font-weight:700;}
 
-/* ソートバー */
-.sort-bar{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px;}
-.sort-btn{flex:1;min-width:0;padding:4px 2px;border-radius:5px;font-size:10px;font-family:var(--font);background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;text-align:center;}
-.sort-btn:hover{border-color:var(--gold);color:var(--gold-lt);}
-.sort-btn.active{border-color:var(--gold);color:var(--gold-lt);background:rgba(200,149,26,.1);font-weight:700;}
+/* 国リストコントロール */
+.country-ctrl{display:flex;gap:6px;margin-bottom:6px;}
+.country-ctrl .sel{flex:1;font-size:11px;padding:5px 6px;}
 
 /* 国リスト */
 .country-list{display:flex;flex-direction:column;gap:2px;padding:4px 0;}
@@ -161,7 +159,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.0.9</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.1.0</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -206,11 +204,17 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 
   <div class="sec">
     <div class="sec-h">🌏 訪れた国</div>
-    <div class="sort-bar">
-      <button class="sort-btn active" data-sort="date">📅 初訪問日順</button>
-      <button class="sort-btn" data-sort="points">⏱ 滞在時間順</button>
-      <button class="sort-btn" data-sort="ja">50音順</button>
-      <button class="sort-btn" data-sort="en">アルファベット順</button>
+    <div class="country-ctrl">
+      <select class="sel" id="sort-sel">
+        <option value="date">📅 初訪問日順</option>
+        <option value="points">⏱ 滞在時間順</option>
+        <option value="ja">50音順</option>
+        <option value="en">アルファベット順</option>
+      </select>
+      <select class="sel" id="lang-sel">
+        <option value="en">English</option>
+        <option value="ja">日本語</option>
+      </select>
     </div>
     <div id="country-list">
       <div class="country-empty"><span>🌍</span>GPSログデータを読み込むと<br>訪れた国が<br>ここに表示されます</div>
@@ -327,7 +331,7 @@ function countryCodeToFlag(code) {
 // =====================================================
 // 言語設定・特別地域名テーブル
 // =====================================================
-const CURRENT_LANG = 'ja'; // あとでセレクタで切り替え可能にする
+let CURRENT_LANG = 'en'; // デフォルトは英語
 
 const REGION_NAMES = {
   ja: {
@@ -627,10 +631,12 @@ let detectBatchTimer = null;
 // 国コードごとのNominatim国名取得キャッシュ
 const countryNameCache = new Map();
 
+let nominatimLang = 'en';
+
 async function fetchCountryName(iso2, sampleLat, sampleLon) {
   if (countryNameCache.has(iso2)) return countryNameCache.get(iso2);
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${sampleLat}&lon=${sampleLon}&format=json&accept-language=ja&zoom=3`;
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${sampleLat}&lon=${sampleLon}&format=json&accept-language=${nominatimLang}&zoom=3`;
     const res = await fetch(url, {headers:{'User-Agent':'GPSVisualizer/1.0'}});
     if (!res.ok) throw new Error();
     const data = await res.json();
@@ -696,14 +702,14 @@ function detectCountriesFromPoints(displayPoints) {
       setTimeout(runBatch, 0);
     } else {
       // バッチ完了後、Nominatimで国名を日本語に更新
-      resolveCountryNamesJa(codeSamplePoint);
+      resolveCountryNames(codeSamplePoint);
     }
   }
   runBatch();
 }
 
 // 国名をNominatimで日本語に一括更新（国ごとに1回だけ）
-async function resolveCountryNamesJa(codeSamplePoint) {
+async function resolveCountryNames(codeSamplePoint) {
   for (const [iso2, p] of codeSamplePoint.entries()) {
     // 特別地域（台湾・香港・マカオ等）は固定名なのでスキップ
     if (visitedCountries.get(iso2)?.nameFixed) continue;
@@ -1095,17 +1101,49 @@ function initMap() {
 }
 
 // =====================================================
-// ソートボタン
+// ソート＆言語セレクタ
 // =====================================================
 let currentSort = 'date';
 
-document.querySelectorAll('.sort-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    currentSort = btn.dataset.sort;
-    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    updateCountryList();
-  });
+document.getElementById('sort-sel').addEventListener('change', e => {
+  currentSort = e.target.value;
+  updateCountryList();
+});
+
+document.getElementById('lang-sel').addEventListener('change', async e => {
+  CURRENT_LANG = e.target.value;
+  // 特別地域の名前をげんごにあわせて更新
+  for (const [iso2, entry] of visitedCountries.entries()) {
+    const specialName = getRegionName(iso2);
+    if (specialName) {
+      entry.name = specialName;
+      entry.nameFixed = true;
+    } else if (CURRENT_LANG === 'en') {
+      // 英語モード→英語名にもどす
+      entry.name = entry.nameEn || entry.name;
+      entry.nameFixed = false;
+    } else {
+      // 日本語モード→Nominatimで取得した日本語名があればつかう
+      const jaName = countryNameCache.get(iso2);
+      if (jaName) {
+        entry.name = jaName;
+      } else {
+        // まだとれてなければNominatimによぶ（キャシュなし）
+        // codeSamplePointはスコープ外なので座標はentryにないが
+        // ポップアップでとれたものはnominatimCacheにある
+        const cached = [...nominatimCache.entries()].find(([k, v]) =>
+          v.countryCode === iso2
+        );
+        if (cached) {
+          entry.name = cached[1].country || entry.name;
+        }
+      }
+    }
+  }
+  // Nominatimのaccept-languageをかえてキャシュをリセット
+  nominatimLang = CURRENT_LANG;
+  countryNameCache.clear();
+  updateCountryList();
 });
 
 // =====================================================
