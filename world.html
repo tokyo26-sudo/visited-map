@@ -866,6 +866,10 @@ function detectCountriesFromPoints(displayPoints) {
       const engName = feature.properties?.NAME || feature.properties?.name || iso2;
       const resolved = getCountryName(iso2);
       const countryName = resolved !== null ? resolved : engName;
+      // デバッグ：台湾関連をログ
+      if (engName.includes('Taiwan') || engName.includes('taiwan') || iso2 === 'TW') {
+        console.log('[DEBUG Taiwan]', {iso2, engName, resolved, countryName, props: feature.properties});
+      }
       if (!foundCodes.has(iso2)) {
         foundCodes.add(iso2);
         codeSamplePoint.set(iso2, p);
