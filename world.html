@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPSログで訪れた国を可視化</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@400;700&family=Noto+Sans+JP:wght@300;400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg:      #0a0d12;
+  --panel:   #12171f;
+  --panel2:  #181e28;
+  --border:  #252d3a;
+  --gold:    #c8951a;
+  --gold-lt: #f0b830;
+  --text:    #dce6f0;
+  --muted:   #6a7a8e;
+  --font-h: 'Kaisei Decol', serif;
+  --font:   'Noto Sans JP', sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+/* ヘッダ */
+header{
+  background:linear-gradient(135deg,#0a0d12 0%,#130e00 100%);
+  border-bottom:1px solid var(--gold);padding:10px 18px;
+  display:flex;align-items:center;gap:14px;flex-shrink:0;
+  box-shadow:0 2px 24px rgba(200,149,26,.18);
+}
+.logo{font-size:26px;filter:drop-shadow(0 0 8px var(--gold));}
+.hd-title{font-family:var(--font-h);font-size:18px;color:var(--gold-lt);letter-spacing:.06em;}
+.hd-sub{font-size:10px;color:var(--muted);margin-top:2px;letter-spacing:.1em;}
+.hd-stats{margin-left:auto;display:flex;gap:18px;align-items:center;}
+.stat{text-align:center;}
+.stat-n{font-family:var(--font-h);font-size:22px;color:var(--gold-lt);line-height:1;text-shadow:0 0 14px rgba(200,149,26,.5);}
+.stat-l{font-size:10px;color:var(--muted);letter-spacing:.1em;}
+.hd-div{width:1px;height:28px;background:var(--border);}
+
+/* レイアウト */
+.body{display:flex;flex:1;overflow:hidden;}
+
+/* サイドバー */
+aside{width:280px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;}
+aside::-webkit-scrollbar{width:3px;}
+aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+.sec{padding:12px 14px;border-bottom:1px solid var(--border);}
+.sec-h{font-size:10px;text-transform:uppercase;letter-spacing:.15em;color:var(--muted);margin-bottom:8px;}
+
+/* ドロップゾーン */
+.drop{border:2px dashed var(--border);border-radius:8px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s;position:relative;background:rgba(255,255,255,.015);}
+.drop:hover,.drop.over{border-color:var(--gold);background:rgba(200,149,26,.07);}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.drop .di{font-size:20px;display:block;margin-bottom:4px;}
+.drop p{font-size:11px;color:var(--muted);line-height:1.5;}
+.drop strong{color:var(--gold-lt);}
+
+/* プログレス */
+.prog{display:none;margin-top:8px;}
+.prog-track{background:var(--border);border-radius:3px;height:3px;overflow:hidden;}
+.prog-fill{background:linear-gradient(90deg,var(--gold),var(--gold-lt));height:100%;width:0;transition:width .2s;border-radius:3px;}
+.prog-txt{font-size:10px;color:var(--muted);margin-top:3px;text-align:center;}
+
+/* ボタン */
+.btn{width:100%;margin-top:5px;padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:var(--font);transition:all .2s;border:1px solid var(--border);background:transparent;color:var(--muted);}
+.btn:hover{border-color:var(--gold);color:var(--gold-lt);}
+.btn-danger{border-color:#f8514944;color:#f85149;display:none;}
+.btn-danger:hover{background:rgba(248,81,73,.1);border-color:#f85149;}
+
+/* ファイルリスト */
+.fl-row{display:flex;align-items:center;gap:7px;padding:4px 2px;border-radius:4px;}
+.fl-name{flex:1;font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fl-name.fl-off{color:var(--muted);text-decoration:line-through;}
+.fl-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:3px;flex-shrink:0;transition:color .15s;}
+.fl-del:hover{color:#f85149;}
+.fl-toggle{position:relative;display:inline-block;width:30px;height:16px;flex-shrink:0;}
+.fl-toggle input{opacity:0;width:0;height:0;}
+.fl-slider{position:absolute;inset:0;background:var(--border);border-radius:8px;transition:.2s;}
+.fl-slider::before{content:'';position:absolute;width:12px;height:12px;left:2px;top:2px;background:#6a7a8e;border-radius:50%;transition:.2s;}
+.fl-toggle input:checked + .fl-slider{background:var(--gold);}
+.fl-toggle input:checked + .fl-slider::before{background:#0a0d12;transform:translateX(14px);}
+
+/* 速度フィルタ */
+.speed-radio-group{display:flex;flex-direction:column;gap:4px;margin-top:4px;}
+.speed-radio-item{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);cursor:pointer;padding:4px 6px;border-radius:5px;transition:background .15s;}
+.speed-radio-item:hover{background:rgba(255,255,255,0.05);}
+.speed-radio-item input{accent-color:var(--gold);cursor:pointer;}
+.speed-radio-item.active{color:var(--gold-lt);font-weight:700;}
+
+/* 国リスト */
+.country-list{display:flex;flex-direction:column;gap:2px;padding:4px 0;}
+.country-item{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:4px;font-size:12px;cursor:pointer;transition:background .12s;}
+.country-item:hover{background:rgba(255,255,255,.05);}
+.country-flag{font-size:18px;flex-shrink:0;line-height:1;}
+.country-name{flex:1;color:var(--text);}
+.country-cnt{font-size:10px;color:var(--muted);flex-shrink:0;}
+.country-empty{font-size:11px;color:var(--muted);text-align:center;padding:14px 0;line-height:1.8;}
+.country-empty span{font-size:24px;display:block;margin-bottom:6px;}
+
+/* トースト */
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--panel2);border:1px solid var(--gold);color:var(--text);padding:8px 18px;border-radius:8px;font-size:12px;box-shadow:0 4px 20px rgba(0,0,0,.5);transition:transform .35s cubic-bezier(.34,1.56,.64,1);z-index:9999;white-space:nowrap;}
+.toast.show{transform:translateX(-50%) translateY(0);}
+
+/* err */
+.err{color:#f85149;font-size:11px;margin-top:4px;display:none;}
+
+/* マップ */
+#map-wrap{flex:1;position:relative;overflow:hidden;}
+#map{width:100%;height:100%;}
+
+/* Leafletカスタム */
+.leaflet-container{background:#1a2840 !important;}
+.leaflet-popup-content-wrapper{
+  background:var(--panel2) !important;
+  border:1px solid var(--gold) !important;
+  border-radius:8px !important;
+  box-shadow:0 4px 20px rgba(0,0,0,.55) !important;
+  color:var(--text) !important;
+  font-family:var(--font) !important;
+}
+.leaflet-popup-tip{background:var(--panel2) !important;}
+.leaflet-popup-close-button{color:var(--muted) !important;}
+.leaflet-popup-close-button:hover{color:var(--gold-lt) !important;}
+.popup-date{font-size:11px;color:var(--muted);margin-bottom:4px;}
+.popup-name{font-family:var(--font-h);font-size:14px;color:var(--gold-lt);margin-bottom:2px;}
+.popup-country{font-size:12px;color:var(--text);}
+.popup-loading{font-size:11px;color:var(--muted);font-style:italic;}
+
+/* ズームボタン（Leafletのカスタム） */
+.leaflet-control-zoom{border:1px solid var(--border) !important;border-radius:6px !important;overflow:hidden;}
+.leaflet-control-zoom a{
+  background:var(--panel2) !important;
+  color:var(--text) !important;
+  border-bottom:1px solid var(--border) !important;
+  transition:all .15s !important;
+}
+.leaflet-control-zoom a:hover{background:var(--panel) !important;color:var(--gold-lt) !important;}
+
+/* ローデイング */
+#loading-overlay{position:absolute;inset:0;background:rgba(10,13,18,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:1000;}
+.spin{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#load-txt{font-size:12px;color:var(--muted);text-align:center;max-width:260px;line-height:1.6;}
+
+/* プログレスオーバレイ（ファイル処理中） */
+#proc-overlay{display:none;position:absolute;inset:0;background:rgba(10,13,18,.6);z-index:500;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
+#proc-overlay.show{display:flex;}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">🌍</span>
+  <div>
+    <div class="hd-title">GPSログで訪れた国を可視化</div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.0.0</span></div>
+  </div>
+  <div class="hd-stats">
+    <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
+    <div class="hd-div"></div>
+    <div class="stat"><div class="stat-n" id="s-points">0</div><div class="stat-l">記録地点数</div></div>
+  </div>
+</header>
+
+<div class="body">
+<aside>
+  <div class="sec">
+    <div class="sec-h">📁 GPSログデータ（gpx / kml / json）</div>
+    <div class="drop" id="drop">
+      <input type="file" accept=".kml,.gpx,.json" id="fileIn" multiple>
+      <span class="di">📂</span>
+      <p><strong>クリック</strong> または ドラッグ&amp;ドロップ<br>.kml / .gpx / .json（Googleタイムライン）対応</p>
+    </div>
+    <div class="prog" id="prog">
+      <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+      <div class="prog-txt" id="prog-txt"></div>
+    </div>
+    <p class="err" id="err"></p>
+    <div id="file-list"></div>
+    <button class="btn btn-danger" id="btn-clear">🗑 全クリア</button>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h">🚗 移動中ポイント間引き</div>
+    <div class="speed-radio-group">
+      <label class="speed-radio-item" id="speed-lbl-0">
+        <input type="radio" name="speed-filter" value="0"> 間引きなし（全点表示）
+      </label>
+      <label class="speed-radio-item active" id="speed-lbl-30">
+        <input type="radio" name="speed-filter" value="30" checked> 車移動を間引き（30km/h以上）
+      </label>
+      <label class="speed-radio-item" id="speed-lbl-200">
+        <input type="radio" name="speed-filter" value="200"> 新幹線・飛行機のみ間引き（200km/h以上）
+      </label>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:5px;">時刻データのないファイルは間引き対象外</div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h">🌏 訪れた国</div>
+    <div id="country-list">
+      <div class="country-empty"><span>🌍</span>GPSログデータを読み込むと<br>訪れた国が<br>ここに表示されます</div>
+    </div>
+  </div>
+</aside>
+
+<div id="map-wrap">
+  <div id="loading-overlay">
+    <div class="spin"></div>
+    <p id="load-txt">地図データを読み込み中...<br><small>初回は少し時間がかかります</small></p>
+  </div>
+  <div id="proc-overlay">
+    <div class="spin"></div>
+    <p id="proc-txt" style="font-size:12px;color:var(--muted);">処理中...</p>
+  </div>
+  <div id="map"></div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// =====================================================
+// 状態
+// =====================================================
+let map = null;
+let geoJsonLayer = null;       // Natural Earth 国ポリゴン
+let markersLayer = null;       // 訪問地点マーカ
+let countryLayer = null;       // 塗りつぶしレイヤ
+let allPoints = [];            // 全ファイル統合の表示用ポイント [{lat,lon,time,fileId}]
+let fileList = [];             // {id, name, enabled, rawPoints:[{lat,lon,time}]}
+let nextFileId = 1;
+let speedFilterKmh = 30;       // 間引きしきい値
+let visitedCountries = new Map(); // countryCode -> {name, flag, count}
+let nominatimCache = new Map();   // "lat,lon" -> {name, country, countryCode}
+let countryFillLayer = null;
+
+// =====================================================
+// トースト
+// =====================================================
+function toast(msg, dur=3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// =====================================================
+// ハバーサイン
+// =====================================================
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+    Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) *
+    Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// =====================================================
+// 速度フィルタ＋距離間引き
+// =====================================================
+function filterPoints(points, maxKmh) {
+  if (!points.length) return points;
+
+  // 速度フィルタ（時刻ありの場合）
+  let filtered = points;
+  const hasTime = points.every(p => p.time);
+  if (maxKmh > 0 && hasTime) {
+    const speeds = points.map((p, i) => {
+      let sp = 0, sn = 0;
+      if (i > 0) {
+        const prev = points[i-1];
+        const dtH = (p.time - prev.time) / 3600000;
+        if (dtH > 0) sp = haversineKm(prev.lat, prev.lon, p.lat, p.lon) / dtH;
+      }
+      if (i < points.length - 1) {
+        const next = points[i+1];
+        const dtH = (next.time - p.time) / 3600000;
+        if (dtH > 0) sn = haversineKm(p.lat, p.lon, next.lat, next.lon) / dtH;
+      }
+      return Math.max(sp, sn);
+    });
+    filtered = points.filter((p, i) => speeds[i] < maxKmh);
+  }
+
+  // 距離間引き（時刻なし or 間引き後も密すぎる場合）
+  // 世界地図なので50m以内は間引く
+  const MIN_DIST_KM = 0.05;
+  const result = [];
+  let lastKept = null;
+  for (const p of filtered) {
+    if (!lastKept) { result.push(p); lastKept = p; continue; }
+    const d = haversineKm(lastKept.lat, lastKept.lon, p.lat, p.lon);
+    if (d >= MIN_DIST_KM) { result.push(p); lastKept = p; }
+  }
+  return result;
+}
+
+// =====================================================
+// 国コード→旗絵文字
+// =====================================================
+function countryCodeToFlag(code) {
+  if (!code || code.length !== 2) return '🏳';
+  const upper = code.toUpperCase();
+  return String.fromCodePoint(
+    upper.charCodeAt(0) - 65 + 0x1F1E6,
+    upper.charCodeAt(1) - 65 + 0x1F1E6
+  );
+}
+
+// =====================================================
+// Nominatim リバスジオコーデイング（キャッシュつき）
+// =====================================================
+async function reverseGeocode(lat, lon) {
+  const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+  if (nominatimCache.has(key)) return nominatimCache.get(key);
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ja`;
+    const res = await fetch(url, {headers:{'User-Agent':'GPSVisualizer/1.0'}});
+    if (!res.ok) throw new Error('nominatim error');
+    const data = await res.json();
+    const result = {
+      name: data.address?.city || data.address?.town || data.address?.village ||
+            data.address?.county || data.address?.state || data.display_name?.split(',')[0] || '',
+      country: data.address?.country || '',
+      countryCode: (data.address?.country_code || '').toUpperCase()
+    };
+    nominatimCache.set(key, result);
+    return result;
+  } catch(e) {
+    const result = {name:'', country:'', countryCode:''};
+    nominatimCache.set(key, result);
+    return result;
+  }
+}
+
+// =====================================================
+// GPX パーサ
+// =====================================================
+function parseGPX(text) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, 'text/xml');
+  const points = [];
+  // トラックポイント
+  doc.querySelectorAll('trkpt').forEach(el => {
+    const lat = parseFloat(el.getAttribute('lat'));
+    const lon = parseFloat(el.getAttribute('lon'));
+    if (isNaN(lat) || isNaN(lon)) return;
+    const timeEl = el.querySelector('time');
+    const time = timeEl ? new Date(timeEl.textContent) : null;
+    points.push({lat, lon, time: time && !isNaN(time) ? time : null});
+  });
+  return points;
+}
+
+// =====================================================
+// KML パーサ
+// =====================================================
+function parseKML(text) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, 'text/xml');
+  const points = [];
+  // Placemark/Point
+  doc.querySelectorAll('Placemark').forEach(pm => {
+    const coord = pm.querySelector('Point > coordinates');
+    if (coord) {
+      const parts = coord.textContent.trim().split(',');
+      const lon = parseFloat(parts[0]);
+      const lat = parseFloat(parts[1]);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        const timeEl = pm.querySelector('TimeStamp > when') || pm.querySelector('when');
+        const time = timeEl ? new Date(timeEl.textContent) : null;
+        points.push({lat, lon, time: time && !isNaN(time) ? time : null});
+      }
+    }
+    // LineString内のポイント（トラック）
+    const lineCoords = pm.querySelector('LineString > coordinates');
+    if (lineCoords) {
+      lineCoords.textContent.trim().split(/\s+/).forEach(c => {
+        const p = c.split(',');
+        const lon = parseFloat(p[0]);
+        const lat = parseFloat(p[1]);
+        if (!isNaN(lat) && !isNaN(lon)) points.push({lat, lon, time: null});
+      });
+    }
+  });
+  // gx:Track
+  doc.querySelectorAll('gx\\:Track, Track').forEach(track => {
+    const whens = [...track.querySelectorAll('when')];
+    const coords = [...track.querySelectorAll('gx\\:coord, coord')];
+    coords.forEach((c, i) => {
+      const p = c.textContent.trim().split(' ');
+      const lon = parseFloat(p[0]);
+      const lat = parseFloat(p[1]);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        const time = whens[i] ? new Date(whens[i].textContent) : null;
+        points.push({lat, lon, time: time && !isNaN(time) ? time : null});
+      }
+    });
+  });
+  return points;
+}
+
+// =====================================================
+// Google タイムライン JSON パーサ
+// =====================================================
+function parseGoogleTimeline(obj) {
+  const points = [];
+
+  // semanticSegments 形式
+  if (obj.semanticSegments) {
+    obj.semanticSegments.forEach(seg => {
+      // visit
+      if (seg.visit?.topCandidate?.placeLocation?.latLng) {
+        const ll = seg.visit.topCandidate.placeLocation.latLng;
+        const m = String(ll).match(/([-\d.]+)[°\s,]+([-\d.]+)/);
+        if (m) {
+          const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+          const time = seg.startTime ? new Date(seg.startTime) : null;
+          if (!isNaN(lat) && !isNaN(lon)) points.push({lat, lon, time});
+        }
+      }
+      // timelinePath
+      if (seg.timelinePath) {
+        seg.timelinePath.forEach(p => {
+          const m = String(p.point).match(/([-\d.]+)[°\s,]+([-\d.]+)/);
+          if (m) {
+            const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+            const time = p.time ? new Date(p.time) : null;
+            if (!isNaN(lat) && !isNaN(lon)) points.push({lat, lon, time});
+          }
+        });
+      }
+    });
+    return points;
+  }
+
+  // locations 配列形式（Records.json）
+  if (obj.locations) {
+    obj.locations.forEach(loc => {
+      const lat = (loc.latitudeE7 ?? loc.latitude) / (loc.latitudeE7 !== undefined ? 1e7 : 1);
+      const lon = (loc.longitudeE7 ?? loc.longitude) / (loc.longitudeE7 !== undefined ? 1e7 : 1);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        const time = loc.timestamp ? new Date(loc.timestamp) : null;
+        points.push({lat, lon, time});
+      }
+    });
+    return points;
+  }
+
+  // 旧形式 placeVisit / activitySegment
+  if (Array.isArray(obj)) {
+    obj.forEach(item => {
+      const pv = item.placeVisit;
+      if (pv?.location?.latitudeE7) {
+        points.push({
+          lat: pv.location.latitudeE7 / 1e7,
+          lon: pv.location.longitudeE7 / 1e7,
+          time: pv.duration?.startTimestamp ? new Date(pv.duration.startTimestamp) : null
+        });
+      }
+    });
+    return points;
+  }
+
+  return points;
+}
+
+// =====================================================
+// ファイル処理
+// =====================================================
+async function processFile(file) {
+  const name = file.name;
+  const ext = name.split('.').pop().toLowerCase();
+  let text;
+
+  try {
+    text = await file.text();
+  } catch(e) {
+    return null;
+  }
+
+  let rawPoints = [];
+
+  if (ext === 'gpx') {
+    rawPoints = parseGPX(text);
+  } else if (ext === 'kml') {
+    rawPoints = parseKML(text);
+  } else if (ext === 'json') {
+    try {
+      const obj = JSON.parse(text);
+      rawPoints = parseGoogleTimeline(obj);
+    } catch(e) {
+      return null;
+    }
+  }
+
+  if (!rawPoints.length) return null;
+
+  return {
+    id: nextFileId++,
+    name,
+    enabled: true,
+    rawPoints
+  };
+}
+
+// =====================================================
+// マーカ再描画
+// =====================================================
+function rebuildMarkers() {
+  if (!markersLayer) return;
+  markersLayer.clearLayers();
+  visitedCountries.clear();
+
+  // 全有効ファイルのポイントを統合・間引き
+  let displayPoints = [];
+  fileList.forEach(f => {
+    if (!f.enabled) return;
+    const filtered = filterPoints(f.rawPoints, speedFilterKmh);
+    filtered.forEach(p => displayPoints.push({...p, fileId: f.id}));
+  });
+
+  // 表示上限（多すぎるとブラウザが重くなるため）
+  const MAX_DISPLAY = 50000;
+  if (displayPoints.length > MAX_DISPLAY) {
+    const step = Math.ceil(displayPoints.length / MAX_DISPLAY);
+    displayPoints = displayPoints.filter((_, i) => i % step === 0);
+  }
+
+  displayPoints.forEach(p => {
+    const circleMarker = L.circleMarker([p.lat, p.lon], {
+      radius: 4,
+      fillColor: '#f0b830',
+      fillOpacity: 0.7,
+      color: '#c8951a',
+      weight: 1
+    });
+
+    // ポップアップ（クリック時にNominatim呼び出し）
+    circleMarker.on('click', async function() {
+      const dateStr = p.time
+        ? p.time.toLocaleDateString('ja-JP', {year:'numeric', month:'long', day:'numeric'})
+        : '日時不明';
+
+      // まずローデイング表示
+      const popup = L.popup({maxWidth: 240, className:'world-popup'})
+        .setLatLng([p.lat, p.lon])
+        .setContent(`
+          <div class="popup-date">${dateStr}</div>
+          <div class="popup-loading">📍 地名を取得中...</div>
+        `)
+        .openOn(map);
+
+      // Nominatimで地名取得
+      const geo = await reverseGeocode(p.lat, p.lon);
+      popup.setContent(`
+        <div class="popup-date">${dateStr}</div>
+        <div class="popup-name">${geo.name || '地名不明'}</div>
+        <div class="popup-country">${countryCodeToFlag(geo.countryCode)} ${geo.country || ''}</div>
+      `);
+
+      // 訪問国を登録
+      if (geo.countryCode && !visitedCountries.has(geo.countryCode)) {
+        visitedCountries.set(geo.countryCode, {
+          name: geo.country,
+          flag: countryCodeToFlag(geo.countryCode),
+          countryCode: geo.countryCode
+        });
+        updateCountryList();
+        updateStats();
+        highlightCountry(geo.countryCode);
+      }
+    });
+
+    markersLayer.addLayer(circleMarker);
+  });
+
+  document.getElementById('s-points').textContent = displayPoints.length.toLocaleString();
+}
+
+// =====================================================
+// 国リスト更新
+// =====================================================
+function updateCountryList() {
+  const el = document.getElementById('country-list');
+  if (!visitedCountries.size) {
+    el.innerHTML = '<div class="country-empty"><span>🌍</span>GPSログデータを読み込むと<br>訪れた国が<br>ここに表示されます</div>';
+    return;
+  }
+
+  // アルファベット順ソート
+  const sorted = [...visitedCountries.values()].sort((a, b) =>
+    (a.name || '').localeCompare(b.name || '', 'ja')
+  );
+
+  el.innerHTML = `<div class="country-list">${
+    sorted.map(c => `
+      <div class="country-item" data-code="${c.countryCode}">
+        <span class="country-flag">${c.flag}</span>
+        <span class="country-name">${c.name || c.countryCode}</span>
+      </div>
+    `).join('')
+  }</div>`;
+}
+
+// =====================================================
+// 統計更新
+// =====================================================
+function updateStats() {
+  document.getElementById('s-countries').textContent = visitedCountries.size;
+}
+
+// =====================================================
+// 国塗りつぶし（Natural Earthポリゴン）
+// =====================================================
+let naturalEarthData = null;
+
+async function loadNaturalEarth() {
+  const URLS = [
+    'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson',
+    'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json',
+  ];
+
+  for (const url of URLS) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      return data;
+    } catch(e) {
+      console.warn('failed:', url);
+    }
+  }
+  return null;
+}
+
+function initCountryLayer(data) {
+  if (!data) return;
+  naturalEarthData = data;
+
+  // world-atlas形式（topojson）の場合はスキップ（GeoJSON想定）
+  if (data.type === 'Topology') {
+    // topojsonは別途対応。今回はGeoJSON形式を優先
+    return;
+  }
+
+  countryFillLayer = L.geoJSON(data, {
+    style: feature => ({
+      fillColor: '#1a3a5c',
+      fillOpacity: 0.35,
+      color: '#2a5080',
+      weight: 0.5
+    }),
+    onEachFeature: (feature, layer) => {
+      const name = feature.properties?.NAME || feature.properties?.name || '';
+      const iso2 = feature.properties?.ISO_A2 || feature.properties?.iso_a2 || '';
+      layer.bindTooltip(name, {
+        sticky: true,
+        className: 'country-tooltip',
+        direction: 'top'
+      });
+    }
+  }).addTo(map);
+
+  // マーカレイヤをポリゴンの上に
+  markersLayer.addTo(map);
+}
+
+function highlightCountry(countryCode) {
+  if (!countryFillLayer || !countryCode) return;
+  countryFillLayer.eachLayer(layer => {
+    const iso2 = layer.feature?.properties?.ISO_A2 || layer.feature?.properties?.iso_a2 || '';
+    if (iso2.toUpperCase() === countryCode.toUpperCase()) {
+      layer.setStyle({fillColor: '#c8951a', fillOpacity: 0.5, color: '#f0b830', weight: 1});
+    }
+  });
+}
+
+// =====================================================
+// ファイルリストUI更新
+// =====================================================
+function renderFileList() {
+  const el = document.getElementById('file-list');
+  const clearBtn = document.getElementById('btn-clear');
+
+  if (!fileList.length) {
+    el.innerHTML = '';
+    clearBtn.style.display = 'none';
+    return;
+  }
+  clearBtn.style.display = 'block';
+
+  el.innerHTML = fileList.map(f => `
+    <div class="fl-row" data-id="${f.id}">
+      <label class="fl-toggle">
+        <input type="checkbox" ${f.enabled ? 'checked' : ''} data-toggle="${f.id}">
+        <span class="fl-slider"></span>
+      </label>
+      <span class="fl-name ${f.enabled ? '' : 'fl-off'}" title="${f.name}">${f.name}</span>
+      <button class="fl-del" data-del="${f.id}">✕</button>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('[data-toggle]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const id = parseInt(cb.dataset.toggle);
+      const f = fileList.find(x => x.id === id);
+      if (f) { f.enabled = cb.checked; rebuildMarkers(); }
+      const nameEl = cb.closest('.fl-row').querySelector('.fl-name');
+      nameEl.classList.toggle('fl-off', !cb.checked);
+    });
+  });
+
+  el.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.del);
+      fileList = fileList.filter(x => x.id !== id);
+      renderFileList();
+      rebuildMarkers();
+    });
+  });
+}
+
+// =====================================================
+// ファイル読み込みハンドラ
+// =====================================================
+async function handleFiles(files) {
+  const procOverlay = document.getElementById('proc-overlay');
+  const procTxt     = document.getElementById('proc-txt');
+  const prog        = document.getElementById('prog');
+  const progFill    = document.getElementById('prog-fill');
+  const progTxt     = document.getElementById('prog-txt');
+  const errEl       = document.getElementById('err');
+
+  errEl.style.display = 'none';
+  prog.style.display = 'block';
+  procOverlay.classList.add('show');
+
+  let loaded = 0;
+  for (const file of files) {
+    procTxt.textContent = `処理中: ${file.name}`;
+    progTxt.textContent = `${file.name} を処理中...`;
+    const result = await processFile(file);
+    loaded++;
+    progFill.style.width = `${(loaded / files.length) * 100}%`;
+
+    if (result) {
+      fileList.push(result);
+    } else {
+      errEl.textContent = `${file.name}: 読み込み失敗（対応フォーマットを確認してください）`;
+      errEl.style.display = 'block';
+    }
+  }
+
+  prog.style.display = 'none';
+  procOverlay.classList.remove('show');
+  renderFileList();
+  rebuildMarkers();
+
+  const total = fileList.reduce((s, f) => s + f.rawPoints.length, 0);
+  toast(`${files.length}ファイル読み込み完了（元データ ${total.toLocaleString()}点）`);
+}
+
+// =====================================================
+// ドロップゾーン
+// =====================================================
+const dropEl   = document.getElementById('drop');
+const fileInEl = document.getElementById('fileIn');
+
+dropEl.addEventListener('dragover', e => { e.preventDefault(); dropEl.classList.add('over'); });
+dropEl.addEventListener('dragleave', () => dropEl.classList.remove('over'));
+dropEl.addEventListener('drop', e => {
+  e.preventDefault();
+  dropEl.classList.remove('over');
+  handleFiles([...e.dataTransfer.files]);
+});
+fileInEl.addEventListener('change', () => {
+  if (fileInEl.files.length) handleFiles([...fileInEl.files]);
+  fileInEl.value = '';
+});
+
+// =====================================================
+// 全クリア
+// =====================================================
+document.getElementById('btn-clear').addEventListener('click', () => {
+  fileList = [];
+  allPoints = [];
+  visitedCountries.clear();
+  renderFileList();
+  if (markersLayer) markersLayer.clearLayers();
+  // 国の塗りつぶしをリセット
+  if (countryFillLayer && naturalEarthData) {
+    countryFillLayer.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5});
+  }
+  updateCountryList();
+  updateStats();
+  document.getElementById('s-points').textContent = '0';
+  toast('全データをクリアしました');
+});
+
+// =====================================================
+// 速度フィルタ
+// =====================================================
+function updateSpeedRadioStyle() {
+  document.querySelectorAll('.speed-radio-item').forEach(lbl => {
+    const val = parseInt(lbl.querySelector('input').value);
+    lbl.classList.toggle('active', val === speedFilterKmh);
+  });
+}
+
+document.querySelectorAll('input[name="speed-filter"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    speedFilterKmh = parseInt(radio.value);
+    updateSpeedRadioStyle();
+    rebuildMarkers();
+  });
+});
+
+// =====================================================
+// 地図初期化
+// =====================================================
+function initMap() {
+  map = L.map('map', {
+    center: [30, 10],
+    zoom: 3,
+    zoomControl: true
+  });
+
+  // タイルレイヤ（ダクテマ）
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+  // マーカレイヤ
+  markersLayer = L.layerGroup();
+
+  // Natural Earth 読み込み
+  loadNaturalEarth().then(data => {
+    document.getElementById('loading-overlay').style.display = 'none';
+    if (data) {
+      initCountryLayer(data);
+      toast('地図データ読み込み完了！GPSログデータをどうぞ');
+    } else {
+      // Natural Earthが読み込めなくてもマーカレイヤは追加
+      markersLayer.addTo(map);
+      toast('地図データ（国境線）の読み込みに失敗しました。地点は表示できます。');
+    }
+  });
+}
+
+// =====================================================
+// 起動
+// =====================================================
+initMap();
+</script>
+</body>
+</html>
