@@ -164,7 +164,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.8</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.9</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -1408,19 +1408,7 @@ function renderFileList() {
     cb.addEventListener('change', () => {
       const id = parseInt(cb.dataset.photoToggle);
       const p = photoList.find(x => x.id === id);
-      if (p) {
-        p.enabled = cb.checked;
-        // くにのぬりつぶしをリセットしてGPSてん＋しゃしんてんから再計算
-        visitedCountries.clear();
-        if (countryFillLayer && naturalEarthData) {
-          countryFillLayer.eachLayer(group => {
-            if (group.setStyle) group.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5});
-            else if (group.eachLayer) group.eachLayer(l => { if (l.setStyle) l.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5}); });
-          });
-        }
-        rebuildMarkers();
-        rebuildPhotoMarkers();
-      }
+      if (p) { p.enabled = cb.checked; rebuildPhotoMarkers(); }
       const nameEl = cb.closest('.fl-row').querySelector('.fl-name');
       nameEl.classList.toggle('fl-off', !cb.checked);
     });
@@ -1492,6 +1480,11 @@ async function handleFiles(files) {
 
   const total = fileList.reduce((s, f) => s + f.rawPoints.length, 0);
   toast(`${files.length}ファイル読み込み完了（元データ ${total.toLocaleString()}点）`);
+
+  // エラーひょうじを5びょうでじどうにけす
+  if (errEl.style.display === 'block') {
+    setTimeout(() => { errEl.style.display = 'none'; }, 5000);
+  }
 }
 
 // =====================================================
