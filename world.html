@@ -159,7 +159,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.2.3</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.2.4</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -207,7 +207,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
     <div class="country-ctrl">
       <select class="sel" id="sort-sel">
         <option value="date">📅 初訪問日順</option>
-        <option value="points">⏱ 滞在時間順</option>
+        <option value="points">📍 記録地点数順</option>
         <option value="ja">［あ］50音順</option>
         <option value="en">［A］アルファベット順</option>
       </select>
@@ -924,7 +924,10 @@ function rebuildMarkers() {
 
   // 国の塗りつぶしをリセット
   if (countryFillLayer && naturalEarthData && naturalEarthData.type !== 'Topology') {
-    countryFillLayer.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5});
+    countryFillLayer.eachLayer(group => {
+      if (group.setStyle) group.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5});
+      else if (group.eachLayer) group.eachLayer(l => { if (l.setStyle) l.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5}); });
+    });
   }
 
   // 全有効ファイルのポイントを統合・間引き
@@ -1071,29 +1074,42 @@ function initCountryLayer(data) {
   if (!data) return;
   naturalEarthData = data;
 
-  // world-atlas形式（topojson）の場合はスキップ（GeoJSON想定）
-  if (data.type === 'Topology') {
-    // topojsonは別途対応。今回はGeoJSON形式を優先
-    return;
+  if (data.type === 'Topology') return;
+
+  // GeoJSONを-360, 0, +360の3コピーで描画（横スクロール時にきえないように）
+  function makeShiftedData(geojson, shiftLon) {
+    return {
+      type: 'FeatureCollection',
+      features: geojson.features.map(f => {
+        const shifted = JSON.parse(JSON.stringify(f));
+        function shiftCoords(c) {
+          if (typeof c[0] === 'number') return [c[0] + shiftLon, c[1]];
+          return c.map(shiftCoords);
+        }
+        if (shifted.geometry?.coordinates) {
+          shifted.geometry.coordinates = shifted.geometry.coordinates.map(shiftCoords);
+        }
+        return shifted;
+      })
+    };
   }
 
-  countryFillLayer = L.geoJSON(data, {
-    style: feature => ({
-      fillColor: '#1a3a5c',
-      fillOpacity: 0.35,
-      color: '#2a5080',
-      weight: 0.5
-    }),
-    onEachFeature: (feature, layer) => {
-      const name = feature.properties?.NAME || feature.properties?.name || '';
-      const iso2 = feature.properties?.ISO_A2 || feature.properties?.iso_a2 || '';
-      layer.bindTooltip(name, {
-        sticky: true,
-        className: 'country-tooltip',
-        direction: 'top'
-      });
-    }
-  }).addTo(map);
+  const baseStyle = {fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5};
+
+  countryFillLayer = L.layerGroup();
+  [-360, 0, 360].forEach(shift => {
+    const geoData = shift === 0 ? data : makeShiftedData(data, shift);
+    const layer = L.geoJSON(geoData, {
+      style: () => baseStyle,
+      onEachFeature: (feature, layer) => {
+        if (shift !== 0) return;
+        const name = feature.properties?.NAME || feature.properties?.name || '';
+        layer.bindTooltip(name, {sticky:true, className:'country-tooltip', direction:'top'});
+      }
+    });
+    countryFillLayer.addLayer(layer);
+  });
+  countryFillLayer.addTo(map);
 
   // マーカレイヤをポリゴンの上に
   markersLayer.addTo(map);
@@ -1101,10 +1117,15 @@ function initCountryLayer(data) {
 
 function highlightCountry(countryCode) {
   if (!countryFillLayer || !countryCode) return;
-  countryFillLayer.eachLayer(layer => {
-    const iso2 = layer.feature?.properties?.ISO_A2 || layer.feature?.properties?.iso_a2 || '';
-    if (iso2.toUpperCase() === countryCode.toUpperCase()) {
-      layer.setStyle({fillColor: '#c8951a', fillOpacity: 0.5, color: '#f0b830', weight: 1});
+  countryFillLayer.eachLayer(group => {
+    if (group.eachLayer) {
+      group.eachLayer(layer => {
+        const props = layer.feature?.properties || {};
+        const iso2 = getIso2FromFeature({properties: props});
+        if (iso2 === countryCode.toUpperCase()) {
+          layer.setStyle({fillColor:'#c8951a', fillOpacity:0.5, color:'#f0b830', weight:1});
+        }
+      });
     }
   });
 }
@@ -1256,7 +1277,8 @@ function initMap() {
   map = L.map('map', {
     center: [30, 10],
     zoom: 3,
-    zoomControl: true
+    zoomControl: true,
+    worldCopyJump: false
   });
 
   // タイルレイヤ（ダクテマ）
