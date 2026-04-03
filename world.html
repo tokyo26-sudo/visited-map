@@ -164,7 +164,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.2</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.3</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -620,16 +620,33 @@ async function reverseGeocode(lat, lon) {
 // =====================================================
 async function readPhotoGPS(file) {
   try {
-    const gps = await exifr.gps(file);
-    if (!gps || gps.latitude == null || gps.longitude == null) return null;
-    const exif = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate']);
-    const time = exif?.DateTimeOriginal || exif?.CreateDate || null;
+    // exifrのフルパースでGPS+日時をいっきによむ
+    const exif = await exifr.parse(file, {
+      gps: true,
+      tiff: true,
+      xmp: false,
+      icc: false,
+      iptc: false,
+      jfif: true,
+      ihdr: false,
+      multiSegment: true,
+      mergeOutput: true,
+      translateKeys: true,
+      translateValues: true,
+      reviveValues: true,
+    });
+    if (!exif) return null;
+    const lat = exif.latitude ?? exif.GPSLatitude;
+    const lon = exif.longitude ?? exif.GPSLongitude;
+    if (lat == null || lon == null) return null;
+    const time = exif.DateTimeOriginal || exif.CreateDate || exif.DateTime || null;
     return {
-      lat: gps.latitude,
-      lon: gps.longitude,
+      lat: typeof lat === 'number' ? lat : null,
+      lon: typeof lon === 'number' ? lon : null,
       time: time instanceof Date ? time : null
     };
   } catch(e) {
+    console.warn('exifr error:', e, file.name);
     return null;
   }
 }
@@ -656,6 +673,34 @@ function generateThumbnail(file) {
 }
 
 // 写真マーカ再描画
+// 写真てんからくにをじどうはんてい
+function detectCountriesFromPhotos() {
+  photoList.forEach(p => {
+    const feature = findCountryForPoint(p.lat, p.lon);
+    if (!feature) return;
+    const iso2 = getIso2FromFeature(feature);
+    if (!iso2 || iso2 === '-1') return;
+    const engName = feature.properties?.NAME || feature.properties?.name || iso2;
+    const resolved = getCountryName(iso2);
+    const countryName = resolved !== null ? resolved : engName;
+    if (!visitedCountries.has(iso2)) {
+      visitedCountries.set(iso2, {
+        name: countryName,
+        nameEn: COUNTRY_NAMES[iso2]?.en || engName,
+        flag: countryCodeToFlag(iso2),
+        countryCode: iso2,
+        firstVisit: p.time ? new Date(p.time) : null,
+        pointCount: 1
+      });
+      highlightCountry(iso2);
+    } else {
+      visitedCountries.get(iso2).pointCount++;
+    }
+  });
+  updateCountryList();
+  updateStats();
+}
+
 function rebuildPhotoMarkers() {
   if (!photoMarkersLayer) return;
   photoMarkersLayer.clearLayers();
@@ -704,6 +749,10 @@ function rebuildPhotoMarkers() {
     });
     photoMarkersLayer.addLayer(marker);
   });
+  // ポリゴンデータがよみこまれてたらじどうでくにはんてい
+  if (naturalEarthData) {
+    detectCountriesFromPhotos();
+  }
 }
 
 // =====================================================
@@ -1282,8 +1331,8 @@ function renderFileList() {
   `).join('');
 
   const photoRows = photoList.map(p => `
-    <div class="fl-row" data-photo-id="${p.id}">
-      <span style="font-size:11px;color:#4caf50;flex-shrink:0;width:30px;text-align:center;">📷</span>
+    <div class="fl-row" data-photo-id="${p.id}" style="padding-left:2px;">
+      <span style="font-size:13px;color:#4caf50;flex-shrink:0;line-height:1;">📷</span>
       <span class="fl-name" title="${p.name}">${p.name}</span>
       <button class="fl-del" data-photo-del="${p.id}">✕</button>
     </div>
@@ -1315,6 +1364,15 @@ function renderFileList() {
       const id = parseInt(btn.dataset.photoDel);
       photoList = photoList.filter(x => x.id !== id);
       renderFileList();
+      // くにのぬりつぶしをリセットしてGPSてん＋のこりしゃしんから再計算
+      visitedCountries.clear();
+      if (countryFillLayer && naturalEarthData) {
+        countryFillLayer.eachLayer(group => {
+          if (group.setStyle) group.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5});
+          else if (group.eachLayer) group.eachLayer(l => { if (l.setStyle) l.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5}); });
+        });
+      }
+      rebuildMarkers();
       rebuildPhotoMarkers();
     });
   });
@@ -1336,28 +1394,43 @@ async function handleFiles(files) {
   procOverlay.classList.add('show');
 
   let loaded = 0;
+  const noGpsFiles = [];
+  const failedFiles = [];
   for (const file of files) {
     procTxt.textContent = `処理中: ${file.name}`;
     progTxt.textContent = `${file.name} を処理中...`;
-    const result = await processFile(file);
-    loaded++;
-    progFill.style.width = `${(loaded / files.length) * 100}%`;
+    try {
+      const result = await processFile(file);
+      loaded++;
+      progFill.style.width = `${(loaded / files.length) * 100}%`;
 
-    if (result) {
-      if (result.type === 'photo') {
-        // 写真はphotoListにはいってる
-      } else if (result.type === 'photo_nogps') {
-        errEl.textContent = `${file.name}: GPS情報がありません`;
-        errEl.style.display = 'block';
-      } else if (result.type === 'worldimport') {
-        importWorldData(result.data);
+      if (result) {
+        if (result.type === 'photo') {
+          // 写真はphotoListにはいってる
+        } else if (result.type === 'photo_nogps') {
+          noGpsFiles.push(file.name);
+        } else if (result.type === 'worldimport') {
+          importWorldData(result.data);
+        } else {
+          fileList.push(result);
+        }
       } else {
-        fileList.push(result);
+        failedFiles.push(file.name);
       }
-    } else {
-      errEl.textContent = `${file.name}: 読み込み失敗（対応フォーマットを確認してください）`;
-      errEl.style.display = 'block';
+    } catch(e) {
+      loaded++;
+      failedFiles.push(file.name);
     }
+  }
+  // エラーをまとめてひょうじ（とまらない）
+  const msgs = [];
+  if (noGpsFiles.length) msgs.push(`GPS情報なし（スキップ）: ${noGpsFiles.join(', ')}`);
+  if (failedFiles.length) msgs.push(`読み込み失敗: ${failedFiles.join(', ')}`);
+  if (msgs.length) {
+    errEl.textContent = msgs.join(' / ');
+    errEl.style.display = 'block';
+  } else {
+    errEl.style.display = 'none';
   }
 
   prog.style.display = 'none';
