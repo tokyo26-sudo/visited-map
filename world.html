@@ -164,7 +164,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.5</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.6</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -656,10 +656,40 @@ function generateThumbnail(file) {
 }
 
 // 写真マーカ再描画
+// 写真てんからくにをじどうはんてい
+function detectCountriesFromPhotos() {
+  if (!naturalEarthData) return;
+  photoList.filter(p => p.enabled !== false).forEach(p => {
+    const feature = findCountryForPoint(p.lat, p.lon);
+    if (!feature) return;
+    const iso2 = getIso2FromFeature(feature);
+    if (!iso2 || iso2 === '-1') return;
+    const engName = feature.properties?.NAME || feature.properties?.name || iso2;
+    const resolved = getCountryName(iso2);
+    const countryName = resolved !== null ? resolved : engName;
+    if (!visitedCountries.has(iso2)) {
+      visitedCountries.set(iso2, {
+        name: countryName,
+        nameEn: COUNTRY_NAMES[iso2]?.en || engName,
+        flag: countryCodeToFlag(iso2),
+        countryCode: iso2,
+        firstVisit: p.time ? new Date(p.time) : null,
+        pointCount: 1
+      });
+      highlightCountry(iso2);
+    } else {
+      const entry = visitedCountries.get(iso2);
+      if (entry) entry.pointCount++;
+    }
+  });
+  updateCountryList();
+  updateStats();
+}
+
 function rebuildPhotoMarkers() {
   if (!photoMarkersLayer) return;
   photoMarkersLayer.clearLayers();
-  photoList.forEach(p => {
+  photoList.filter(p => p.enabled !== false).forEach(p => {
     const marker = L.circleMarker([p.lat, p.lon], {
       radius: 6,
       fillColor: '#4caf50',
@@ -704,6 +734,8 @@ function rebuildPhotoMarkers() {
     });
     photoMarkersLayer.addLayer(marker);
   });
+  // じどうくにぬりつぶし
+  if (naturalEarthData) detectCountriesFromPhotos();
 }
 
 // =====================================================
@@ -870,7 +902,14 @@ async function processFile(file) {
     const gps = await readPhotoGPS(file);
     if (!gps) return {type:'photo_nogps', name};
     const thumb = await generateThumbnail(file);
-    const photo = {id:nextFileId++, name, lat:gps.lat, lon:gps.lon, time:gps.time, thumb};
+    // ひょうじ名: 📷 年月 ファイル名
+    let photoDisplayName = name;
+    if (gps.time instanceof Date) {
+      const yr = gps.time.getFullYear();
+      const mo = String(gps.time.getMonth()+1).padStart(2,'0');
+      photoDisplayName = `📷 ${yr}-${mo} ${name}`;
+    }
+    const photo = {id:nextFileId++, name:photoDisplayName, originalName:name, lat:gps.lat, lon:gps.lon, time:gps.time, thumb, enabled:true};
     photoList.push(photo);
     rebuildPhotoMarkers();
     return {type:'photo', name};
@@ -892,9 +931,22 @@ async function processFile(file) {
 
   if (!rawPoints.length) return null;
 
+  // ひょうじ名: 最初の日付 + 点数
+  const timePts = rawPoints.filter(p => p.time);
+  let displayName = name;
+  if (timePts.length) {
+    timePts.sort((a, b) => a.time - b.time);
+    const d = timePts[0].time;
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    displayName = `${dateStr} (${rawPoints.length}pts)`;
+  } else {
+    displayName = `${name} (${rawPoints.length}pts)`;
+  }
+
   return {
     id: nextFileId++,
-    name,
+    name: displayName,
+    originalName: name,
     enabled: true,
     rawPoints
   };
@@ -1315,8 +1367,11 @@ function renderFileList() {
 
   const photoRows = photoList.map(p => `
     <div class="fl-row" data-photo-id="${p.id}">
-      <span style="font-size:11px;color:#4caf50;flex-shrink:0;width:30px;text-align:center;">📷</span>
-      <span class="fl-name" title="${p.name}">${p.name}</span>
+      <label class="fl-toggle">
+        <input type="checkbox" ${p.enabled !== false ? 'checked' : ''} data-photo-toggle="${p.id}">
+        <span class="fl-slider"></span>
+      </label>
+      <span class="fl-name ${p.enabled !== false ? '' : 'fl-off'}" title="${p.name}">${p.name}</span>
       <button class="fl-del" data-photo-del="${p.id}">✕</button>
     </div>
   `).join('');
@@ -1342,11 +1397,30 @@ function renderFileList() {
     });
   });
 
+  el.querySelectorAll('[data-photo-toggle]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const id = parseInt(cb.dataset.photoToggle);
+      const p = photoList.find(x => x.id === id);
+      if (p) { p.enabled = cb.checked; rebuildPhotoMarkers(); }
+      const nameEl = cb.closest('.fl-row').querySelector('.fl-name');
+      nameEl.classList.toggle('fl-off', !cb.checked);
+    });
+  });
+
   el.querySelectorAll('[data-photo-del]').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = parseInt(btn.dataset.photoDel);
       photoList = photoList.filter(x => x.id !== id);
       renderFileList();
+      // くにのぬりつぶしをリセットして再計算
+      visitedCountries.clear();
+      if (countryFillLayer && naturalEarthData) {
+        countryFillLayer.eachLayer(group => {
+          if (group.setStyle) group.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5});
+          else if (group.eachLayer) group.eachLayer(l => { if (l.setStyle) l.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5}); });
+        });
+      }
+      rebuildMarkers();
       rebuildPhotoMarkers();
     });
   });
