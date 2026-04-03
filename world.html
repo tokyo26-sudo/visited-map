@@ -132,6 +132,10 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .popup-name{font-family:var(--font-h);font-size:14px;color:var(--gold-lt);margin-bottom:2px;}
 .popup-country{font-size:12px;color:var(--text);}
 .popup-loading{font-size:11px;color:var(--muted);font-style:italic;}
+.popup-thumb{width:100px;height:100px;object-fit:cover;border-radius:6px;margin-bottom:6px;display:block;}
+.fl-controls{display:flex;gap:4px;margin-bottom:4px;}
+.fl-ctrl-btn{flex:1;padding:3px 0;font-size:10px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;}
+.fl-ctrl-btn:hover{border-color:var(--gold);color:var(--gold-lt);}
 
 /* ズームボタン（Leafletのカスタム） */
 .leaflet-control-zoom{border:1px solid var(--border) !important;border-radius:6px !important;overflow:hidden;}
@@ -159,7 +163,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.2.4</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.0</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -171,19 +175,32 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 <div class="body">
 <aside>
   <div class="sec">
-    <div class="sec-h">📁 GPSログデータ（gpx / kml / json）</div>
+    <div class="sec-h">📁 GPSログデータ（gpx / kml / json / jpg）</div>
     <div class="drop" id="drop">
-      <input type="file" accept=".kml,.gpx,.json" id="fileIn" multiple>
+      <input type="file" accept=".kml,.gpx,.json,.jpg,.jpeg" id="fileIn" multiple>
       <span class="di">📂</span>
-      <p><strong>クリック</strong> または ドラッグ&amp;ドロップ<br>.kml / .gpx / .json（Googleタイムライン）対応</p>
+      <p><strong>クリック</strong> または ドラッグ&amp;ドロップ<br>.kml / .gpx / .json / .jpg（写真）対応</p>
     </div>
     <div class="prog" id="prog">
       <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
       <div class="prog-txt" id="prog-txt"></div>
     </div>
     <p class="err" id="err"></p>
+    <div id="file-list-controls" style="display:none;">
+      <div class="fl-controls">
+        <button class="fl-ctrl-btn" id="btn-show-all">全て表示</button>
+        <button class="fl-ctrl-btn" id="btn-hide-all">全て非表示</button>
+      </div>
+    </div>
     <div id="file-list"></div>
     <button class="btn btn-danger" id="btn-clear">🗑 全クリア</button>
+    <div style="position:relative;margin-top:5px;">
+      <button class="btn" id="btn-export">📤 エクスポート（保存）</button>
+    </div>
+    <div style="position:relative;margin-top:5px;">
+      <button class="btn" id="btn-import-trigger">📥 インポート（読み込み）</button>
+      <input type="file" accept=".json" id="importIn" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;">
+    </div>
   </div>
 
   <div class="sec">
@@ -250,11 +267,13 @@ let markersLayer = null;       // 訪問地点マーカ
 let countryLayer = null;       // 塗りつぶしレイヤ
 let allPoints = [];            // 全ファイル統合の表示用ポイント [{lat,lon,time,fileId}]
 let fileList = [];             // {id, name, enabled, rawPoints:[{lat,lon,time}]}
+let photoList = [];            // {id, name, lat, lon, time, thumb} 写真てん
 let nextFileId = 1;
 let speedFilterKmh = 30;       // 間引きしきい値
 let visitedCountries = new Map(); // countryCode -> {name, flag, count}
 let nominatimCache = new Map();   // "lat,lon" -> {name, country, countryCode}
 let countryFillLayer = null;
+let photoMarkersLayer = null;  // 写真てんレイヤ
 
 // =====================================================
 // トースト
@@ -596,6 +615,180 @@ async function reverseGeocode(lat, lon) {
 }
 
 // =====================================================
+// EXIF GPS パーサ（jpg/jpeg）
+// =====================================================
+function parseExifGPS(buffer) {
+  const view = new DataView(buffer);
+  if (view.getUint16(0) !== 0xFFD8) return null; // JPEGじゃない
+
+  let offset = 2;
+  while (offset < view.byteLength - 2) {
+    const marker = view.getUint16(offset);
+    if (marker === 0xFFE1) { // APP1 (EXIF)
+      return parseExifApp1(view, offset + 4);
+    }
+    if ((marker & 0xFF00) !== 0xFF00) break;
+    offset += 2 + view.getUint16(offset + 2);
+  }
+  return null;
+}
+
+function parseExifApp1(view, start) {
+  // Exif header check
+  const exifHeader = String.fromCharCode(
+    view.getUint8(start), view.getUint8(start+1),
+    view.getUint8(start+2), view.getUint8(start+3)
+  );
+  if (exifHeader !== 'Exif') return null;
+
+  const tiffStart = start + 6;
+  const byteOrder = view.getUint16(tiffStart);
+  const le = byteOrder === 0x4949; // little endian
+
+  function r16(o) { return view.getUint16(tiffStart + o, le); }
+  function r32(o) { return view.getUint32(tiffStart + o, le); }
+
+  const ifd0 = r32(4);
+  const entries = r16(ifd0);
+
+  let gpsOffset = null;
+  let dateTimeStr = null;
+
+  for (let i = 0; i < entries; i++) {
+    const e = ifd0 + 2 + i * 12;
+    const tag = r16(e);
+    if (tag === 0x8825) gpsOffset = r32(e + 8); // GPSInfoIFDPointer
+    if (tag === 0x9003) { // DateTimeOriginal
+      const len = r32(e + 4);
+      const valOffset = r32(e + 8);
+      let s = '';
+      for (let j = 0; j < len - 1; j++) s += String.fromCharCode(view.getUint8(tiffStart + valOffset + j));
+      dateTimeStr = s;
+    }
+  }
+
+  if (!gpsOffset) return null;
+
+  const gpsEntries = r16(gpsOffset);
+  let latRef = 'N', lonRef = 'E', lat = null, lon = null;
+
+  function rational(o) {
+    const num = r32(o);
+    const den = r32(o + 4);
+    return den ? num / den : 0;
+  }
+
+  for (let i = 0; i < gpsEntries; i++) {
+    const e = gpsOffset + 2 + i * 12;
+    const tag = r16(e);
+    const valOffset = r32(e + 8);
+
+    if (tag === 1) latRef = String.fromCharCode(view.getUint8(tiffStart + valOffset));
+    if (tag === 3) lonRef = String.fromCharCode(view.getUint8(tiffStart + valOffset));
+    if (tag === 2) {
+      const o = tiffStart + valOffset;
+      lat = rational(o) + rational(o+8)/60 + rational(o+16)/3600;
+    }
+    if (tag === 4) {
+      const o = tiffStart + valOffset;
+      lon = rational(o) + rational(o+8)/60 + rational(o+16)/3600;
+    }
+  }
+
+  if (lat === null || lon === null) return null;
+  if (latRef === 'S') lat = -lat;
+  if (lonRef === 'W') lon = -lon;
+
+  let time = null;
+  if (dateTimeStr) {
+    // "2023:08:15 14:30:00" → Date
+    const m = dateTimeStr.match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+    if (m) time = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+  }
+
+  return {lat, lon, time};
+}
+
+// しゃしんを100×100pxサムネイルに縮小してbase64でかえす
+function generateThumbnail(file) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 100; canvas.height = 100;
+      const ctx = canvas.getContext('2d');
+      // アスペクト比をたもちながらクロップ
+      const size = Math.min(img.width, img.height);
+      const sx = (img.width - size) / 2;
+      const sy = (img.height - size) / 2;
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, 100, 100);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+// 写真マーカ再描画
+function rebuildPhotoMarkers() {
+  if (!photoMarkersLayer) return;
+  photoMarkersLayer.clearLayers();
+
+  photoList.forEach(p => {
+    const marker = L.circleMarker([p.lat, p.lon], {
+      radius: 6,
+      fillColor: '#4caf50',
+      fillOpacity: 0.85,
+      color: '#2e7d32',
+      weight: 1.5
+    });
+
+    marker.on('click', async function() {
+      const dateStr = p.time
+        ? p.time.toLocaleDateString('ja-JP', {year:'numeric', month:'long', day:'numeric'})
+        : '日時不明';
+
+      const popup = L.popup({maxWidth: 260})
+        .setLatLng([p.lat, p.lon])
+        .setContent(`
+          ${p.thumb ? `<img src="${p.thumb}" class="popup-thumb">` : ''}
+          <div class="popup-date">${dateStr}</div>
+          <div class="popup-name">${p.name}</div>
+          <div class="popup-loading">📍 地名を取得中...</div>
+        `)
+        .openOn(map);
+
+      const geo = await reverseGeocode(p.lat, p.lon);
+      popup.setContent(`
+        ${p.thumb ? `<img src="${p.thumb}" class="popup-thumb">` : ''}
+        <div class="popup-date">${dateStr}</div>
+        <div class="popup-name">${p.name}</div>
+        <div class="popup-country">${geo.name ? geo.name + ' / ' : ''}${countryCodeToFlag(geo.countryCode)} ${geo.country || '地名不明'}</div>
+      `);
+
+      // 国を登録・ハイライト
+      if (geo.countryCode && !visitedCountries.has(geo.countryCode)) {
+        visitedCountries.set(geo.countryCode, {
+          name: getCountryName(geo.countryCode) || geo.country,
+          nameEn: COUNTRY_NAMES[geo.countryCode]?.en || geo.country,
+          flag: countryCodeToFlag(geo.countryCode),
+          countryCode: geo.countryCode,
+          firstVisit: p.time || null,
+          pointCount: 1
+        });
+        highlightCountry(geo.countryCode);
+        updateCountryList();
+        updateStats();
+      }
+    });
+
+    photoMarkersLayer.addLayer(marker);
+  });
+}
+
+// =====================================================
 // GPX パーサ
 // =====================================================
 function parseGPX(text) {
@@ -755,6 +948,31 @@ async function processFile(file) {
 
   let rawPoints = [];
 
+  if (ext === 'jpg' || ext === 'jpeg') {
+    // 写真はべつにあつかう
+    try {
+      const buffer = await file.arrayBuffer();
+      const gps = parseExifGPS(buffer);
+      if (!gps) {
+        return {type: 'photo_nogps', name};
+      }
+      const thumb = await generateThumbnail(file);
+      const photo = {
+        id: nextFileId++,
+        name,
+        lat: gps.lat,
+        lon: gps.lon,
+        time: gps.time,
+        thumb
+      };
+      photoList.push(photo);
+      rebuildPhotoMarkers();
+      return {type: 'photo', name};
+    } catch(e) {
+      return null;
+    }
+  }
+
   if (ext === 'gpx') {
     rawPoints = parseGPX(text);
   } else if (ext === 'kml') {
@@ -762,6 +980,10 @@ async function processFile(file) {
   } else if (ext === 'json') {
     try {
       const obj = JSON.parse(text);
+      // インポートJSONかどうかチェック
+      if (obj._worldExport) {
+        return {type: 'worldimport', data: obj};
+      }
       rawPoints = parseGoogleTimeline(obj);
     } catch(e) {
       return null;
@@ -1137,14 +1359,18 @@ function renderFileList() {
   const el = document.getElementById('file-list');
   const clearBtn = document.getElementById('btn-clear');
 
-  if (!fileList.length) {
+  const hasAny = fileList.length > 0 || photoList.length > 0;
+  const ctrlEl = document.getElementById('file-list-controls');
+  if (!hasAny) {
     el.innerHTML = '';
     clearBtn.style.display = 'none';
+    ctrlEl.style.display = 'none';
     return;
   }
   clearBtn.style.display = 'block';
+  ctrlEl.style.display = 'block';
 
-  el.innerHTML = fileList.map(f => `
+  const gpsRows = fileList.map(f => `
     <div class="fl-row" data-id="${f.id}">
       <label class="fl-toggle">
         <input type="checkbox" ${f.enabled ? 'checked' : ''} data-toggle="${f.id}">
@@ -1154,6 +1380,16 @@ function renderFileList() {
       <button class="fl-del" data-del="${f.id}">✕</button>
     </div>
   `).join('');
+
+  const photoRows = photoList.map(p => `
+    <div class="fl-row" data-photo-id="${p.id}">
+      <span style="font-size:11px;color:#4caf50;flex-shrink:0;">📷</span>
+      <span class="fl-name" title="${p.name}">${p.name}</span>
+      <button class="fl-del" data-photo-del="${p.id}">✕</button>
+    </div>
+  `).join('');
+
+  el.innerHTML = gpsRows + photoRows;
 
   el.querySelectorAll('[data-toggle]').forEach(cb => {
     cb.addEventListener('change', () => {
@@ -1171,6 +1407,15 @@ function renderFileList() {
       fileList = fileList.filter(x => x.id !== id);
       renderFileList();
       rebuildMarkers();
+    });
+  });
+
+  el.querySelectorAll('[data-photo-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.photoDel);
+      photoList = photoList.filter(x => x.id !== id);
+      renderFileList();
+      rebuildPhotoMarkers();
     });
   });
 }
@@ -1199,7 +1444,16 @@ async function handleFiles(files) {
     progFill.style.width = `${(loaded / files.length) * 100}%`;
 
     if (result) {
-      fileList.push(result);
+      if (result.type === 'photo') {
+        // 写真はphotoListにはいってるのでfileListにはいれない
+      } else if (result.type === 'photo_nogps') {
+        errEl.textContent = `${file.name}: GPS情報がありません`;
+        errEl.style.display = 'block';
+      } else if (result.type === 'worldimport') {
+        importWorldData(result.data);
+      } else {
+        fileList.push(result);
+      }
     } else {
       errEl.textContent = `${file.name}: 読み込み失敗（対応フォーマットを確認してください）`;
       errEl.style.display = 'block';
@@ -1238,10 +1492,12 @@ fileInEl.addEventListener('change', () => {
 // =====================================================
 document.getElementById('btn-clear').addEventListener('click', () => {
   fileList = [];
+  photoList = [];
   allPoints = [];
   visitedCountries.clear();
   renderFileList();
   if (markersLayer) markersLayer.clearLayers();
+  if (photoMarkersLayer) photoMarkersLayer.clearLayers();
   // 国の塗りつぶしをリセット
   if (countryFillLayer && naturalEarthData) {
     countryFillLayer.setStyle({fillColor:'#1a3a5c', fillOpacity:0.35, color:'#2a5080', weight:0.5});
@@ -1290,6 +1546,7 @@ function initMap() {
 
   // マーカレイヤ
   markersLayer = L.layerGroup();
+  photoMarkersLayer = L.layerGroup().addTo(map);
 
   // Natural Earth 読み込み
   loadNaturalEarth().then(data => {
@@ -1339,6 +1596,107 @@ document.getElementById('lang-sel').addEventListener('change', e => {
   }
 
   updateCountryList();
+});
+
+// =====================================================
+// エクスポート
+// =====================================================
+document.getElementById('btn-export').addEventListener('click', () => {
+  const data = {
+    _worldExport: true,
+    version: 1,
+    files: fileList.map(f => ({
+      id: f.id,
+      name: f.name,
+      enabled: f.enabled,
+      rawPoints: f.rawPoints.map(p => ({
+        lat: p.lat, lon: p.lon,
+        time: p.time ? p.time.toISOString() : null
+      }))
+    })),
+    photos: photoList.map(p => ({
+      id: p.id,
+      name: p.name,
+      lat: p.lat,
+      lon: p.lon,
+      time: p.time ? p.time.toISOString() : null,
+      thumb: p.thumb
+    }))
+  };
+  const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `world-visited-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  toast('エクスポートしました！');
+});
+
+// =====================================================
+// インポート
+// =====================================================
+function importWorldData(data) {
+  if (!data._worldExport) return;
+  if (data.files) {
+    data.files.forEach(f => {
+      fileList.push({
+        id: nextFileId++,
+        name: f.name,
+        enabled: f.enabled,
+        rawPoints: f.rawPoints.map(p => ({
+          lat: p.lat, lon: p.lon,
+          time: p.time ? new Date(p.time) : null
+        }))
+      });
+    });
+  }
+  if (data.photos) {
+    data.photos.forEach(p => {
+      photoList.push({
+        id: nextFileId++,
+        name: p.name,
+        lat: p.lat,
+        lon: p.lon,
+        time: p.time ? new Date(p.time) : null,
+        thumb: p.thumb
+      });
+    });
+  }
+  renderFileList();
+  rebuildMarkers();
+  rebuildPhotoMarkers();
+  toast('インポートしました！');
+}
+
+document.getElementById('importIn').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const obj = JSON.parse(text);
+    if (obj._worldExport) {
+      importWorldData(obj);
+    } else {
+      toast('このファイルは世界版のエクスポートデータではありません');
+    }
+  } catch(err) {
+    toast('読み込みに失敗しました');
+  }
+  e.target.value = '';
+});
+
+// =====================================================
+// 全表示・全非表示
+// =====================================================
+document.getElementById('btn-show-all').addEventListener('click', () => {
+  fileList.forEach(f => f.enabled = true);
+  renderFileList();
+  rebuildMarkers();
+});
+
+document.getElementById('btn-hide-all').addEventListener('click', () => {
+  fileList.forEach(f => f.enabled = false);
+  renderFileList();
+  rebuildMarkers();
 });
 
 // =====================================================
