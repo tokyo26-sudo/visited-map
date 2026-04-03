@@ -164,7 +164,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.6</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.7</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -1105,6 +1105,8 @@ function detectCountriesFromPoints(displayPoints) {
       setTimeout(runBatch, 0);
     } else {
       resolveCountryNames(codeSamplePoint);
+      // GPSてんのバッチかんりょうごにしゃしんてんのくにもはんてい
+      if (naturalEarthData && photoList.length > 0) detectCountriesFromPhotos();
     }
   }
   runBatch();
@@ -1198,9 +1200,14 @@ function rebuildMarkers() {
   document.getElementById('s-points').textContent = displayPoints.length.toLocaleString();
 
   // 国ポリゴン自動判定（バッチ）
+  if (detectBatchTimer) clearTimeout(detectBatchTimer);
   if (displayPoints.length > 0) {
-    if (detectBatchTimer) clearTimeout(detectBatchTimer);
-    detectBatchTimer = setTimeout(() => detectCountriesFromPoints(displayPoints), 200);
+    detectBatchTimer = setTimeout(() => {
+      detectCountriesFromPoints(displayPoints);
+    }, 200);
+  } else {
+    // GPSてんがなくてもしゃしんてんのくにはひょうじ
+    if (naturalEarthData && photoList.length > 0) detectCountriesFromPhotos();
   }
 }
 
