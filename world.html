@@ -133,6 +133,12 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .popup-name{font-family:var(--font-h);font-size:14px;color:var(--gold-lt);margin-bottom:2px;}
 .popup-country{font-size:12px;color:var(--text);}
 .popup-loading{font-size:11px;color:var(--muted);font-style:italic;}
+.theme-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
+.theme-btn{width:28px;height:28px;border-radius:6px;border:2px solid transparent;cursor:pointer;transition:all .18s;position:relative;}
+.theme-btn:hover{transform:scale(1.15);}
+.theme-btn.active{border-color:#f0b830;box-shadow:0 0 6px rgba(240,184,48,.5);}
+.theme-btn::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:white;opacity:0;font-weight:700;}
+.theme-btn.active::after{opacity:1;}
 .popup-thumb{width:100px;height:100px;object-fit:cover;border-radius:6px;margin-bottom:6px;display:block;}
 .fl-controls{display:flex;gap:4px;margin-bottom:4px;}
 .fl-ctrl-btn{flex:1;padding:3px 0;font-size:10px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;}
@@ -164,7 +170,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.9</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.0</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -221,6 +227,16 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   </div>
 
   <div class="sec">
+    <div class="sec-h">🎨 カラーテーマ</div>
+    <div class="theme-btns">
+      <div class="theme-btn active" id="theme-gold" title="ゴールド" style="background:linear-gradient(135deg,#8b6010,#f0b830);" data-theme="gold"></div>
+      <div class="theme-btn" id="theme-red" title="レッド" style="background:linear-gradient(135deg,#8b1a0a,#ff6b35);" data-theme="red"></div>
+      <div class="theme-btn" id="theme-blue" title="ブルー" style="background:linear-gradient(135deg,#0a2a5c,#40c0f0);" data-theme="blue"></div>
+      <div class="theme-btn" id="theme-green" title="グリーン" style="background:linear-gradient(135deg,#0a4020,#50e090);" data-theme="green"></div>
+    </div>
+  </div>
+
+  <div class="sec">
     <div class="sec-h">🌏 訪れた国</div>
     <div class="country-ctrl">
       <select class="sel" id="sort-sel">
@@ -267,6 +283,17 @@ let geoJsonLayer = null;       // Natural Earth 国ポリゴン
 let markersLayer = null;       // 訪問地点マーカ
 let countryLayer = null;       // 塗りつぶしレイヤ
 let allPoints = [];            // 全ファイル統合の表示用ポイント [{lat,lon,time,fileId}]
+// カラーテーマ定義
+const COLOR_THEMES = {
+  gold:  {dot:'#f0b830', dotBorder:'#c8951a', fill:'#c8951a', fillBorder:'#f0b830'},
+  red:   {dot:'#ff6b35', dotBorder:'#c0392b', fill:'#c0392b', fillBorder:'#ff6b35'},
+  blue:  {dot:'#40c0f0', dotBorder:'#1a6bb0', fill:'#1a6bb0', fillBorder:'#40c0f0'},
+  green: {dot:'#50e090', dotBorder:'#1a8050', fill:'#1a8050', fillBorder:'#50e090'},
+};
+let currentTheme = 'gold';
+
+function getTheme() { return COLOR_THEMES[currentTheme] || COLOR_THEMES.gold; }
+
 let fileList = [];             // {id, name, enabled, rawPoints:[{lat,lon,time}]}
 let photoList = [];            // {id, name, lat, lon, time, thumb}
 let nextFileId = 1;
@@ -692,9 +719,9 @@ function rebuildPhotoMarkers() {
   photoList.filter(p => p.enabled !== false).forEach(p => {
     const marker = L.circleMarker([p.lat, p.lon], {
       radius: 6,
-      fillColor: '#4caf50',
+      fillColor: '#9b59b6',
       fillOpacity: 0.85,
-      color: '#2e7d32',
+      color: '#6c3483',
       weight: 1.5
     });
     marker.on('click', async function() {
@@ -1153,9 +1180,9 @@ function rebuildMarkers() {
   displayPoints.forEach(p => {
     const circleMarker = L.circleMarker([p.lat, p.lon], {
       radius: 4,
-      fillColor: '#f0b830',
+      fillColor: getTheme().dot,
       fillOpacity: 0.7,
-      color: '#c8951a',
+      color: getTheme().dotBorder,
       weight: 1
     });
 
@@ -1336,7 +1363,7 @@ function highlightCountry(countryCode) {
         const props = layer.feature?.properties || {};
         const iso2 = getIso2FromFeature({properties: props});
         if (iso2 === countryCode.toUpperCase()) {
-          layer.setStyle({fillColor:'#c8951a', fillOpacity:0.5, color:'#f0b830', weight:1});
+          layer.setStyle({fillColor:getTheme().fill, fillOpacity:0.5, color:getTheme().fillBorder, weight:1});
         }
       });
     }
@@ -1670,6 +1697,39 @@ document.getElementById('btn-hide-all').addEventListener('click', () => {
   fileList.forEach(f => f.enabled = false);
   renderFileList();
   rebuildMarkers();
+});
+
+// =====================================================
+// カラーテーマ
+// =====================================================
+function applyTheme() {
+  const t = getTheme();
+  // マーカの色を更新
+  rebuildMarkers();
+  rebuildPhotoMarkers();
+  // すでにハイライトされてるくにをいろかえ
+  if (countryFillLayer) {
+    countryFillLayer.eachLayer(group => {
+      if (group.eachLayer) {
+        group.eachLayer(layer => {
+          const props = layer.feature?.properties || {};
+          const iso2 = getIso2FromFeature({properties: props});
+          if (iso2 && visitedCountries.has(iso2)) {
+            layer.setStyle({fillColor:t.fill, fillOpacity:0.5, color:t.fillBorder, weight:1});
+          }
+        });
+      }
+    });
+  }
+}
+
+document.querySelectorAll('.theme-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentTheme = btn.dataset.theme;
+    document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyTheme();
+  });
 });
 
 // =====================================================
