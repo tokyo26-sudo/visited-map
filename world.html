@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@400;700&family=Noto+Sans+JP:wght@300;400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr@7/dist/full.umd.cjs"></script>
 <style>
 :root {
   --bg:      #0a0d12;
@@ -163,7 +164,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.0</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.3.1</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -267,13 +268,13 @@ let markersLayer = null;       // 訪問地点マーカ
 let countryLayer = null;       // 塗りつぶしレイヤ
 let allPoints = [];            // 全ファイル統合の表示用ポイント [{lat,lon,time,fileId}]
 let fileList = [];             // {id, name, enabled, rawPoints:[{lat,lon,time}]}
-let photoList = [];            // {id, name, lat, lon, time, thumb} 写真てん
+let photoList = [];            // {id, name, lat, lon, time, thumb}
 let nextFileId = 1;
+let photoMarkersLayer = null;
 let speedFilterKmh = 30;       // 間引きしきい値
 let visitedCountries = new Map(); // countryCode -> {name, flag, count}
 let nominatimCache = new Map();   // "lat,lon" -> {name, country, countryCode}
 let countryFillLayer = null;
-let photoMarkersLayer = null;  // 写真てんレイヤ
 
 // =====================================================
 // トースト
@@ -615,101 +616,25 @@ async function reverseGeocode(lat, lon) {
 }
 
 // =====================================================
-// EXIF GPS パーサ（jpg/jpeg）
+// 写真EXIFよみこみ（exifrライブラリ使用）
 // =====================================================
-function parseExifGPS(buffer) {
-  const view = new DataView(buffer);
-  if (view.getUint16(0) !== 0xFFD8) return null; // JPEGじゃない
-
-  let offset = 2;
-  while (offset < view.byteLength - 2) {
-    const marker = view.getUint16(offset);
-    if (marker === 0xFFE1) { // APP1 (EXIF)
-      return parseExifApp1(view, offset + 4);
-    }
-    if ((marker & 0xFF00) !== 0xFF00) break;
-    offset += 2 + view.getUint16(offset + 2);
+async function readPhotoGPS(file) {
+  try {
+    const gps = await exifr.gps(file);
+    if (!gps || gps.latitude == null || gps.longitude == null) return null;
+    const exif = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate']);
+    const time = exif?.DateTimeOriginal || exif?.CreateDate || null;
+    return {
+      lat: gps.latitude,
+      lon: gps.longitude,
+      time: time instanceof Date ? time : null
+    };
+  } catch(e) {
+    return null;
   }
-  return null;
 }
 
-function parseExifApp1(view, start) {
-  // Exif header check
-  const exifHeader = String.fromCharCode(
-    view.getUint8(start), view.getUint8(start+1),
-    view.getUint8(start+2), view.getUint8(start+3)
-  );
-  if (exifHeader !== 'Exif') return null;
-
-  const tiffStart = start + 6;
-  const byteOrder = view.getUint16(tiffStart);
-  const le = byteOrder === 0x4949; // little endian
-
-  function r16(o) { return view.getUint16(tiffStart + o, le); }
-  function r32(o) { return view.getUint32(tiffStart + o, le); }
-
-  const ifd0 = r32(4);
-  const entries = r16(ifd0);
-
-  let gpsOffset = null;
-  let dateTimeStr = null;
-
-  for (let i = 0; i < entries; i++) {
-    const e = ifd0 + 2 + i * 12;
-    const tag = r16(e);
-    if (tag === 0x8825) gpsOffset = r32(e + 8); // GPSInfoIFDPointer
-    if (tag === 0x9003) { // DateTimeOriginal
-      const len = r32(e + 4);
-      const valOffset = r32(e + 8);
-      let s = '';
-      for (let j = 0; j < len - 1; j++) s += String.fromCharCode(view.getUint8(tiffStart + valOffset + j));
-      dateTimeStr = s;
-    }
-  }
-
-  if (!gpsOffset) return null;
-
-  const gpsEntries = r16(gpsOffset);
-  let latRef = 'N', lonRef = 'E', lat = null, lon = null;
-
-  function rational(o) {
-    const num = r32(o);
-    const den = r32(o + 4);
-    return den ? num / den : 0;
-  }
-
-  for (let i = 0; i < gpsEntries; i++) {
-    const e = gpsOffset + 2 + i * 12;
-    const tag = r16(e);
-    const valOffset = r32(e + 8);
-
-    if (tag === 1) latRef = String.fromCharCode(view.getUint8(tiffStart + valOffset));
-    if (tag === 3) lonRef = String.fromCharCode(view.getUint8(tiffStart + valOffset));
-    if (tag === 2) {
-      const o = tiffStart + valOffset;
-      lat = rational(o) + rational(o+8)/60 + rational(o+16)/3600;
-    }
-    if (tag === 4) {
-      const o = tiffStart + valOffset;
-      lon = rational(o) + rational(o+8)/60 + rational(o+16)/3600;
-    }
-  }
-
-  if (lat === null || lon === null) return null;
-  if (latRef === 'S') lat = -lat;
-  if (lonRef === 'W') lon = -lon;
-
-  let time = null;
-  if (dateTimeStr) {
-    // "2023:08:15 14:30:00" → Date
-    const m = dateTimeStr.match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
-    if (m) time = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
-  }
-
-  return {lat, lon, time};
-}
-
-// しゃしんを100×100pxサムネイルに縮小してbase64でかえす
+// 100×100pxサムネイル生成
 function generateThumbnail(file) {
   return new Promise(resolve => {
     const url = URL.createObjectURL(file);
@@ -718,7 +643,6 @@ function generateThumbnail(file) {
       const canvas = document.createElement('canvas');
       canvas.width = 100; canvas.height = 100;
       const ctx = canvas.getContext('2d');
-      // アスペクト比をたもちながらクロップ
       const size = Math.min(img.width, img.height);
       const sx = (img.width - size) / 2;
       const sy = (img.height - size) / 2;
@@ -735,7 +659,6 @@ function generateThumbnail(file) {
 function rebuildPhotoMarkers() {
   if (!photoMarkersLayer) return;
   photoMarkersLayer.clearLayers();
-
   photoList.forEach(p => {
     const marker = L.circleMarker([p.lat, p.lon], {
       radius: 6,
@@ -744,13 +667,12 @@ function rebuildPhotoMarkers() {
       color: '#2e7d32',
       weight: 1.5
     });
-
     marker.on('click', async function() {
       const dateStr = p.time
-        ? p.time.toLocaleDateString('ja-JP', {year:'numeric', month:'long', day:'numeric'})
+        ? (p.time instanceof Date ? p.time : new Date(p.time))
+            .toLocaleDateString('ja-JP', {year:'numeric', month:'long', day:'numeric'})
         : '日時不明';
-
-      const popup = L.popup({maxWidth: 260})
+      const popup = L.popup({maxWidth:260})
         .setLatLng([p.lat, p.lon])
         .setContent(`
           ${p.thumb ? `<img src="${p.thumb}" class="popup-thumb">` : ''}
@@ -759,7 +681,6 @@ function rebuildPhotoMarkers() {
           <div class="popup-loading">📍 地名を取得中...</div>
         `)
         .openOn(map);
-
       const geo = await reverseGeocode(p.lat, p.lon);
       popup.setContent(`
         ${p.thumb ? `<img src="${p.thumb}" class="popup-thumb">` : ''}
@@ -767,15 +688,13 @@ function rebuildPhotoMarkers() {
         <div class="popup-name">${p.name}</div>
         <div class="popup-country">${geo.name ? geo.name + ' / ' : ''}${countryCodeToFlag(geo.countryCode)} ${geo.country || '地名不明'}</div>
       `);
-
-      // 国を登録・ハイライト
       if (geo.countryCode && !visitedCountries.has(geo.countryCode)) {
         visitedCountries.set(geo.countryCode, {
           name: getCountryName(geo.countryCode) || geo.country,
           nameEn: COUNTRY_NAMES[geo.countryCode]?.en || geo.country,
           flag: countryCodeToFlag(geo.countryCode),
           countryCode: geo.countryCode,
-          firstVisit: p.time || null,
+          firstVisit: p.time ? new Date(p.time) : null,
           pointCount: 1
         });
         highlightCountry(geo.countryCode);
@@ -783,7 +702,6 @@ function rebuildPhotoMarkers() {
         updateStats();
       }
     });
-
     photoMarkersLayer.addLayer(marker);
   });
 }
@@ -949,28 +867,13 @@ async function processFile(file) {
   let rawPoints = [];
 
   if (ext === 'jpg' || ext === 'jpeg') {
-    // 写真はべつにあつかう
-    try {
-      const buffer = await file.arrayBuffer();
-      const gps = parseExifGPS(buffer);
-      if (!gps) {
-        return {type: 'photo_nogps', name};
-      }
-      const thumb = await generateThumbnail(file);
-      const photo = {
-        id: nextFileId++,
-        name,
-        lat: gps.lat,
-        lon: gps.lon,
-        time: gps.time,
-        thumb
-      };
-      photoList.push(photo);
-      rebuildPhotoMarkers();
-      return {type: 'photo', name};
-    } catch(e) {
-      return null;
-    }
+    const gps = await readPhotoGPS(file);
+    if (!gps) return {type:'photo_nogps', name};
+    const thumb = await generateThumbnail(file);
+    const photo = {id:nextFileId++, name, lat:gps.lat, lon:gps.lon, time:gps.time, thumb};
+    photoList.push(photo);
+    rebuildPhotoMarkers();
+    return {type:'photo', name};
   }
 
   if (ext === 'gpx') {
@@ -980,10 +883,7 @@ async function processFile(file) {
   } else if (ext === 'json') {
     try {
       const obj = JSON.parse(text);
-      // インポートJSONかどうかチェック
-      if (obj._worldExport) {
-        return {type: 'worldimport', data: obj};
-      }
+      if (obj._worldExport) return {type:'worldimport', data:obj};
       rawPoints = parseGoogleTimeline(obj);
     } catch(e) {
       return null;
@@ -1078,8 +978,8 @@ function detectCountriesFromPoints(displayPoints) {
   const SAMPLE_STEP = Math.max(1, Math.floor(displayPoints.length / 2000));
   const samples = displayPoints.filter((_, i) => i % SAMPLE_STEP === 0);
 
-  const foundCodes = new Set(visitedCountries.keys());
-  // 国コードごとのサンプル座標（Nominatim用）
+  // foundCodesは空からスタート（visitedCountriesはrebuildMarkers冒頭でクリア済み）
+  const foundCodes = new Set();
   const codeSamplePoint = new Map();
   let idx = 0;
   const BATCH = 200;
@@ -1358,17 +1258,17 @@ function highlightCountry(countryCode) {
 function renderFileList() {
   const el = document.getElementById('file-list');
   const clearBtn = document.getElementById('btn-clear');
-
-  const hasAny = fileList.length > 0 || photoList.length > 0;
   const ctrlEl = document.getElementById('file-list-controls');
+  const hasAny = fileList.length > 0 || photoList.length > 0;
+
   if (!hasAny) {
     el.innerHTML = '';
     clearBtn.style.display = 'none';
-    ctrlEl.style.display = 'none';
+    if (ctrlEl) ctrlEl.style.display = 'none';
     return;
   }
   clearBtn.style.display = 'block';
-  ctrlEl.style.display = 'block';
+  if (ctrlEl) ctrlEl.style.display = 'block';
 
   const gpsRows = fileList.map(f => `
     <div class="fl-row" data-id="${f.id}">
@@ -1383,7 +1283,7 @@ function renderFileList() {
 
   const photoRows = photoList.map(p => `
     <div class="fl-row" data-photo-id="${p.id}">
-      <span style="font-size:11px;color:#4caf50;flex-shrink:0;">📷</span>
+      <span style="font-size:11px;color:#4caf50;flex-shrink:0;width:30px;text-align:center;">📷</span>
       <span class="fl-name" title="${p.name}">${p.name}</span>
       <button class="fl-del" data-photo-del="${p.id}">✕</button>
     </div>
@@ -1445,7 +1345,7 @@ async function handleFiles(files) {
 
     if (result) {
       if (result.type === 'photo') {
-        // 写真はphotoListにはいってるのでfileListにはいれない
+        // 写真はphotoListにはいってる
       } else if (result.type === 'photo_nogps') {
         errEl.textContent = `${file.name}: GPS情報がありません`;
         errEl.style.display = 'block';
@@ -1563,42 +1463,6 @@ function initMap() {
 }
 
 // =====================================================
-// ソート＆言語セレクタ
-// =====================================================
-let currentSort = 'date';
-
-document.getElementById('sort-sel').addEventListener('change', e => {
-  currentSort = e.target.value;
-  updateCountryList();
-});
-
-document.getElementById('lang-sel').addEventListener('change', e => {
-  const newLang = e.target.value;
-  if (newLang === CURRENT_LANG) return;
-
-  CURRENT_LANG = newLang;
-  nominatimLang = newLang;
-  nominatimCache.clear();
-
-  // COUNTRY_NAMESテーブルから国名をきりかえるだけ、すぐおわる
-  for (const [iso2, entry] of visitedCountries.entries()) {
-    const resolved = getCountryName(iso2);
-    entry.name = resolved !== null ? resolved : (entry.nameEn || entry.name);
-  }
-
-  // 50音順optionのグレーアウト
-  const jaOpt = document.querySelector('#sort-sel option[value="ja"]');
-  if (jaOpt) jaOpt.disabled = (newLang !== 'ja');
-  // 英語モードで50音順が選ばれてたらアルファベット順にきりかえ
-  if (newLang !== 'ja' && currentSort === 'ja') {
-    currentSort = 'en';
-    document.getElementById('sort-sel').value = 'en';
-  }
-
-  updateCountryList();
-});
-
-// =====================================================
 // エクスポート
 // =====================================================
 document.getElementById('btn-export').addEventListener('click', () => {
@@ -1606,20 +1470,15 @@ document.getElementById('btn-export').addEventListener('click', () => {
     _worldExport: true,
     version: 1,
     files: fileList.map(f => ({
-      id: f.id,
-      name: f.name,
-      enabled: f.enabled,
+      id: f.id, name: f.name, enabled: f.enabled,
       rawPoints: f.rawPoints.map(p => ({
         lat: p.lat, lon: p.lon,
         time: p.time ? p.time.toISOString() : null
       }))
     })),
     photos: photoList.map(p => ({
-      id: p.id,
-      name: p.name,
-      lat: p.lat,
-      lon: p.lon,
-      time: p.time ? p.time.toISOString() : null,
+      id: p.id, name: p.name, lat: p.lat, lon: p.lon,
+      time: p.time ? (p.time instanceof Date ? p.time.toISOString() : p.time) : null,
       thumb: p.thumb
     }))
   };
@@ -1639,9 +1498,7 @@ function importWorldData(data) {
   if (data.files) {
     data.files.forEach(f => {
       fileList.push({
-        id: nextFileId++,
-        name: f.name,
-        enabled: f.enabled,
+        id: nextFileId++, name: f.name, enabled: f.enabled,
         rawPoints: f.rawPoints.map(p => ({
           lat: p.lat, lon: p.lon,
           time: p.time ? new Date(p.time) : null
@@ -1652,10 +1509,8 @@ function importWorldData(data) {
   if (data.photos) {
     data.photos.forEach(p => {
       photoList.push({
-        id: nextFileId++,
-        name: p.name,
-        lat: p.lat,
-        lon: p.lon,
+        id: nextFileId++, name: p.name,
+        lat: p.lat, lon: p.lon,
         time: p.time ? new Date(p.time) : null,
         thumb: p.thumb
       });
@@ -1697,6 +1552,42 @@ document.getElementById('btn-hide-all').addEventListener('click', () => {
   fileList.forEach(f => f.enabled = false);
   renderFileList();
   rebuildMarkers();
+});
+
+// =====================================================
+// ソート＆言語セレクタ
+// =====================================================
+let currentSort = 'date';
+
+document.getElementById('sort-sel').addEventListener('change', e => {
+  currentSort = e.target.value;
+  updateCountryList();
+});
+
+document.getElementById('lang-sel').addEventListener('change', e => {
+  const newLang = e.target.value;
+  if (newLang === CURRENT_LANG) return;
+
+  CURRENT_LANG = newLang;
+  nominatimLang = newLang;
+  nominatimCache.clear();
+
+  // COUNTRY_NAMESテーブルから国名をきりかえるだけ、すぐおわる
+  for (const [iso2, entry] of visitedCountries.entries()) {
+    const resolved = getCountryName(iso2);
+    entry.name = resolved !== null ? resolved : (entry.nameEn || entry.name);
+  }
+
+  // 50音順optionのグレーアウト
+  const jaOpt = document.querySelector('#sort-sel option[value="ja"]');
+  if (jaOpt) jaOpt.disabled = (newLang !== 'ja');
+  // 英語モードで50音順が選ばれてたらアルファベット順にきりかえ
+  if (newLang !== 'ja' && currentSort === 'ja') {
+    currentSort = 'en';
+    document.getElementById('sort-sel').value = 'en';
+  }
+
+  updateCountryList();
 });
 
 // =====================================================
