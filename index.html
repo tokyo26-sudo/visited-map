@@ -118,6 +118,8 @@ svg#map-pref{position:relative;z-index:2;}
 
 /* ファイルリスト */
 .fl-row{display:flex;align-items:center;gap:7px;padding:4px 2px;border-radius:4px;}
+.nav-link{display:flex;align-items:center;justify-content:center;gap:6px;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;font-family:var(--font);cursor:pointer;transition:all .2s;text-decoration:none;width:100%;}
+.nav-link:hover{border-color:var(--gold);color:var(--gold-lt);}
 .fl-name{flex:1;font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fl-name.fl-off{color:var(--muted);text-decoration:line-through;}
 .fl-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:3px;flex-shrink:0;transition:color .15s;}
@@ -242,7 +244,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.2</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.3</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l">訪問した市区町村</div></div>
@@ -255,6 +257,9 @@ svg#map-pref{position:relative;z-index:2;}
 
 <div class="body">
 <aside>
+  <div class="sec">
+    <a href="./world.html" class="nav-link">🌍 世界版（訪問国マップ）へ</a>
+  </div>
   <!-- タブ -->
   <div class="tab-bar">
     <button class="tab-btn active" id="tab-muni">🏘 市区町村</button>

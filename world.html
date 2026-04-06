@@ -133,6 +133,8 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .popup-name{font-family:var(--font-h);font-size:14px;color:var(--gold-lt);margin-bottom:2px;}
 .popup-country{font-size:12px;color:var(--text);}
 .popup-loading{font-size:11px;color:var(--muted);font-style:italic;}
+.nav-link{display:flex;align-items:center;justify-content:center;gap:6px;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;font-family:var(--font);cursor:pointer;transition:all .2s;text-decoration:none;width:100%;}
+.nav-link:hover{border-color:var(--gold);color:var(--gold-lt);}
 .theme-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
 .theme-btn{width:28px;height:28px;border-radius:6px;border:2px solid transparent;cursor:pointer;transition:all .18s;position:relative;}
 .theme-btn:hover{transform:scale(1.15);}
@@ -170,7 +172,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.3</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.4</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -181,6 +183,9 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 
 <div class="body">
 <aside>
+  <div class="sec">
+    <a href="./index.html" class="nav-link">🗾 日本版（市区町村マップ）へ</a>
+  </div>
   <div class="sec">
     <div class="sec-h">📁 GPSログデータ（gpx / kml / json / jpg）</div>
     <div class="drop" id="drop">
