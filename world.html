@@ -170,7 +170,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.2-DEBUG2</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.3</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -395,7 +395,12 @@ const NAME_TO_ISO2 = {
   'Taiwan, Province of China': 'TW',
   'Kosovo': 'XK',
   'N. Cyprus': 'CY',
+  'France': 'FR',
+  'Somaliland': 'SO', // ソマリランドはソマリアとしてあつかう
 };
+
+// -99などの無効なISO2コードは無視する
+const INVALID_ISO2 = new Set(['-1', '-99', '']);
 
 // Natural Earth ne_10mで特殊なISO_A2コードを正規化
 const ISO2_NORMALIZE = {
@@ -685,16 +690,12 @@ function generateThumbnail(file) {
 // 写真マーカ再描画
 // 写真てんからくにをじどうはんてい
 function detectCountriesFromPhotos() {
-  console.log('[DEBUG detectCountriesFromPhotos]', 'naturalEarthData=', !!naturalEarthData, 'photoList=', photoList.length);
   if (!naturalEarthData) return;
   photoList.filter(p => p.enabled !== false).forEach(p => {
-    console.log('[DEBUG photo point]', p.name, 'lat=', p.lat, 'lon=', p.lon);
     const feature = findCountryForPoint(p.lat, p.lon);
-    console.log('[DEBUG photo result]', feature ? feature.properties?.NAME : 'NOT FOUND');
     if (!feature) return;
     const iso2 = getIso2FromFeature(feature);
-    console.log('[DEBUG photo iso2]', p.name, p.lat, p.lon, '->', iso2, feature.properties?.NAME);
-    if (!iso2 || iso2 === '-1') return;
+    if (!iso2 || iso2 === '-1' || iso2 === '-99') return;
     const engName = feature.properties?.NAME || feature.properties?.name || iso2;
     const resolved = getCountryName(iso2);
     const countryName = resolved !== null ? resolved : engName;
@@ -1047,13 +1048,15 @@ function findCountryForPoint(lat, lon) {
 // featureからISO2コードを正規化して取得
 function getIso2FromFeature(feature) {
   let iso2 = (feature.properties?.ISO_A2 || feature.properties?.iso_a2 || '').toUpperCase();
-  // -1の場合はNAMEから変換を試みる
-  if (!iso2 || iso2 === '-1') {
+  // -1や-99など無効なコードの場合はNAMEから変換を試みる
+  if (!iso2 || iso2 === '-1' || iso2 === '-99') {
     const name = feature.properties?.NAME || feature.properties?.name || '';
     iso2 = NAME_TO_ISO2[name] || '';
   }
   // ne_10mの特殊コードを正規化（CN-TW→TW等）
   if (ISO2_NORMALIZE[iso2]) iso2 = ISO2_NORMALIZE[iso2];
+  // まだ無効なコードならからにする
+  if (iso2 === '-1' || iso2 === '-99') iso2 = '';
   return iso2;
 }
 
@@ -1101,7 +1104,7 @@ function detectCountriesFromPoints(displayPoints) {
       const feature = findCountryForPoint(p.lat, p.lon);
       if (!feature) continue;
       const iso2 = getIso2FromFeature(feature);
-      if (!iso2 || iso2 === '-1') continue;
+      if (!iso2 || iso2 === '-1' || iso2 === '-99') continue;
       const engName = feature.properties?.NAME || feature.properties?.name || iso2;
       const resolved = getCountryName(iso2);
       const countryName = resolved !== null ? resolved : engName;
