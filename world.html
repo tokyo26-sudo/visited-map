@@ -170,7 +170,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.2</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.2-DEBUG2</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -685,11 +685,15 @@ function generateThumbnail(file) {
 // 写真マーカ再描画
 // 写真てんからくにをじどうはんてい
 function detectCountriesFromPhotos() {
+  console.log('[DEBUG detectCountriesFromPhotos]', 'naturalEarthData=', !!naturalEarthData, 'photoList=', photoList.length);
   if (!naturalEarthData) return;
   photoList.filter(p => p.enabled !== false).forEach(p => {
+    console.log('[DEBUG photo point]', p.name, 'lat=', p.lat, 'lon=', p.lon);
     const feature = findCountryForPoint(p.lat, p.lon);
+    console.log('[DEBUG photo result]', feature ? feature.properties?.NAME : 'NOT FOUND');
     if (!feature) return;
     const iso2 = getIso2FromFeature(feature);
+    console.log('[DEBUG photo iso2]', p.name, p.lat, p.lon, '->', iso2, feature.properties?.NAME);
     if (!iso2 || iso2 === '-1') return;
     const engName = feature.properties?.NAME || feature.properties?.name || iso2;
     const resolved = getCountryName(iso2);
