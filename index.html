@@ -244,7 +244,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.4</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.5</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l">訪問した市区町村</div></div>
@@ -332,6 +332,12 @@ svg#map-pref{position:relative;z-index:2;}
       <label class="speed-radio-item" id="display-lbl-flag">
         <input type="radio" name="display-mode" value="flag"> 訪問フラグ（行った/行ってない）
       </label>
+    </div>
+    <div style="margin-top:8px;">
+      <button class="mask-toggle" id="btn-label-toggle">
+        <span class="mask-dot" id="label-toggle-dot"></span>
+        <span id="label-toggle-label">市区町村名 表示 OFF</span>
+      </button>
     </div>
   </div>
 
@@ -696,6 +702,7 @@ const proj = d3.geoMercator().center([136.5, 35.4]).scale(1500).translate([0, 0]
 const path = d3.geoPath().projection(proj);
 
 const LABEL_ZOOM = 45; // ほぼ最大ズームのときだけ表示
+let showMuniLabel = false; // 市区町村名トグル（デフォルトOFF）
 
 const zoom = d3.zoom().scaleExtent([0.4, 50]).on('zoom', e => {
   gMuni.attr('transform', e.transform);
@@ -705,7 +712,8 @@ const zoom = d3.zoom().scaleExtent([0.4, 50]).on('zoom', e => {
 
   // ラベルの表示・非表示とフォントサイズ調整
   const sc = e.transform.k;
-  if (sc >= LABEL_ZOOM) {
+  const shouldShow = showMuniLabel || sc >= LABEL_ZOOM;
+  if (shouldShow) {
     gLabels.style('display', null);
     const fs = 9 / sc;
     gLabels.selectAll('text').attr('font-size', fs);
@@ -2072,6 +2080,24 @@ document.querySelectorAll('input[name="speed-filter"]').forEach(radio => {
   });
 });
 
+// 市区町村名トグル
+document.getElementById('btn-label-toggle').addEventListener('click', () => {
+  showMuniLabel = !showMuniLabel;
+  const btn = document.getElementById('btn-label-toggle');
+  const dot = document.getElementById('label-toggle-dot');
+  const lbl = document.getElementById('label-toggle-label');
+  btn.classList.toggle('on', showMuniLabel);
+  lbl.textContent = showMuniLabel ? '市区町村名 表示 ON' : '市区町村名 表示 OFF';
+  // いまのズームじょうたいでひょうじをきりかえる
+  const sc = d3.zoomTransform(svg.node()).k;
+  const shouldShow = showMuniLabel || sc >= LABEL_ZOOM;
+  gLabels.style('display', shouldShow ? null : 'none');
+  if (shouldShow) {
+    const fs = 9 / sc;
+    gLabels.selectAll('text').attr('font-size', fs);
+  }
+});
+
 // マスクモード
 document.getElementById('btn-mask-mode').addEventListener('click', () => {
   maskMode = !maskMode;
@@ -2114,7 +2140,7 @@ document.getElementById('btn-zout').addEventListener('click', () => {
 document.getElementById('btn-zreset').addEventListener('click', () => {
   initProj();
   gMuni.attr('transform',''); gLines.attr('transform',''); gPts.attr('transform','');
-  gLabels.attr('transform','').style('display','none');
+  gLabels.attr('transform','').style('display', showMuniLabel ? null : 'none');
   svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
   setTimeout(() => { if (topoData) { redrawMuni(); if (kmlPts.length) redrawKML(); } }, 420);
 });
