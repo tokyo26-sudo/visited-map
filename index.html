@@ -244,7 +244,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.5</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.6</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l">訪問した市区町村</div></div>
@@ -387,8 +387,8 @@ svg#map-pref{position:relative;z-index:2;}
   </div>
   <div class="sec">
     <div class="pref-tab-bar">
-      <button class="pref-tab-btn active" id="pref-tab-rate">📊 訪問率</button>
-      <button class="pref-tab-btn" id="pref-tab-stay">⏱ 滞在時間</button>
+      <button class="pref-tab-btn" id="pref-tab-rate">📊 訪問率</button>
+      <button class="pref-tab-btn active" id="pref-tab-stay">⏱ 滞在時間</button>
     </div>
     <div class="mlist" id="pref-list">
       <div class="empty"><span>🗺️</span>GPSログデータを読み込むと<br>都道府県別の訪問率が<br>ここに表示されます</div>
@@ -526,7 +526,7 @@ function rebuildVisitedMap() {
 let prefData     = null;   // 都道府県GeoJSON
 let prefFeatures = [];
 let currentTab   = 'muni'; // 'muni' or 'pref'
-let prefListMode = 'rate'; // 'rate' or 'stay'
+let prefListMode = 'stay'; // 'rate' or 'stay'
 
 const svgPref  = d3.select('#map-pref');
 const gPrefMap = svgPref.append('g');
