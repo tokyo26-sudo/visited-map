@@ -165,6 +165,55 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 /* プログレスオーバレイ（ファイル処理中） */
 #proc-overlay{display:none;position:absolute;inset:0;background:rgba(10,13,18,.6);z-index:500;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
 #proc-overlay.show{display:flex;}
+
+/* ジェスチャーヒント */
+#gesture-hint{
+  display:none;
+  position:absolute;inset:0;z-index:400;
+  background:rgba(10,13,18,.7);
+  align-items:center;justify-content:center;flex-direction:column;gap:10px;
+  pointer-events:none;
+}
+#gesture-hint.show{display:flex;}
+#gesture-hint p{font-size:14px;color:var(--text);text-align:center;line-height:1.7;}
+#gesture-hint span{font-size:32px;}
+
+/* ===== スマホ用レイアウト ===== */
+@media (max-width: 768px) {
+  body{overflow:auto;}
+
+  /* ヘッダをコンパクトに */
+  header{padding:8px 12px;gap:8px;}
+  .logo{font-size:20px;}
+  .hd-title{font-size:14px;}
+  .hd-sub{display:none;}
+  .hd-stats{gap:10px;}
+  .stat-n{font-size:18px;}
+  .stat-l{font-size:9px;}
+  .hd-div{height:20px;}
+
+  /* bodyをたてならびに */
+  .body{flex-direction:column;overflow:visible;}
+
+  /* サイドバーをしたのメニュエリアに */
+  aside{
+    width:100%;
+    border-right:none;
+    border-top:1px solid var(--border);
+    overflow-y:visible;
+    order:2;
+  }
+
+  /* ちずをうえに、たかさ固定 */
+  #map-wrap{
+    width:100%;
+    height:60vh;
+    min-height:300px;
+    flex:none;
+    order:1;
+  }
+  #map{width:100%;height:100%;}
+}
 </style>
 </head>
 <body>
@@ -172,7 +221,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.4</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.5</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -272,6 +321,10 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <div id="proc-overlay">
     <div class="spin"></div>
     <p id="proc-txt" style="font-size:12px;color:var(--muted);">処理中...</p>
+  </div>
+  <div id="gesture-hint">
+    <span>✌️</span>
+    <p>指2本で地図を操作<br>指1本でページスクロール</p>
   </div>
   <div id="map"></div>
 </div>
@@ -1618,6 +1671,44 @@ function initMap() {
       toast('地図データ（国境線）の読み込みに失敗しました。地点は表示できます。');
     }
   });
+
+  // ===== スマホ用ジェスチャーハンドリング =====
+  if (window.matchMedia('(max-width: 768px)').matches) {
+    // デフォルトはドラッグ・タッチズームを無効化
+    map.dragging.disable();
+    map.touchZoom.disable();
+    map.scrollWheelZoom.disable();
+
+    let hintTimer = null;
+    const hint = document.getElementById('gesture-hint');
+
+    const mapEl = document.getElementById('map');
+
+    mapEl.addEventListener('touchstart', e => {
+      if (e.touches.length >= 2) {
+        // ゆびにほん：ちずそうさ有効
+        map.dragging.enable();
+        map.touchZoom.enable();
+        hint.classList.remove('show');
+        clearTimeout(hintTimer);
+      } else {
+        // ゆびいっぽん：ちずそうさ無効（ページスクロール）
+        map.dragging.disable();
+        map.touchZoom.disable();
+        // ヒントをひょうじ（1秒後に消す）
+        hint.classList.add('show');
+        clearTimeout(hintTimer);
+        hintTimer = setTimeout(() => hint.classList.remove('show'), 1200);
+      }
+    }, {passive: true});
+
+    mapEl.addEventListener('touchend', e => {
+      if (e.touches.length < 2) {
+        map.dragging.disable();
+        map.touchZoom.disable();
+      }
+    }, {passive: true});
+  }
 }
 
 // =====================================================
