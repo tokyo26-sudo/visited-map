@@ -344,7 +344,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.1.1</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.1.2</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
@@ -1868,6 +1868,9 @@ function updateFileList() {
       }
     });
   });
+
+  // スマホ用ファイルリストもこうしん
+  if (typeof updateSpFileArea === 'function') updateSpFileArea();
 }
 
 // =====================================================
@@ -2884,11 +2887,7 @@ function updateSpFileArea() {
 }
 
 // PCとスマホのファイルリストをどうじにこうしんする
-const origUpdateFileList = updateFileList;
-function updateFileList() {
-  origUpdateFileList();
-  updateSpFileArea();
-}
+// updateFileListのあとにupdateSpFileAreaもよぶ（さいていぎはしない）
 
 // PCのconfirmDialogをかくにんダイアログつきに（全クリア）
 document.getElementById('btn-clear').addEventListener('click', () => {
