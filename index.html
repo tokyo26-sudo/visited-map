@@ -267,7 +267,7 @@ svg#map-pref{position:relative;z-index:2;}
   .stat-l{font-size:8px;letter-spacing:0;}
   /* すまほ：タイトルを短く */
   .hd-title::before{content:'GPS市町村マップ ';}
-  .hd-title::after{content:'v1.2.4';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
+  .hd-title::after{content:'v1.2.6';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
   .hd-title span, .hd-title{font-size:0;}
   .hd-title::before{font-size:13px;font-family:var(--font-h);color:var(--gold-lt);}
   /* すまほ：使い方ボタンかくす */
@@ -282,13 +282,13 @@ svg#map-pref{position:relative;z-index:2;}
   .hd-div{height:18px;}
 
   /* bodyをたてならびに */
-  .body{flex-direction:column;overflow:visible;}
+  .body{flex-direction:column;overflow:visible;min-height:0;}
 
   /* PCさいどばをかくす */
   aside{display:none;}
 
   /* ちずをおおきく */
-  #map-wrap{width:100%;height:65vh;min-height:300px;flex:none;order:1;}
+  #map-wrap{width:100%;height:65svh;min-height:300px;flex:none;order:1;}
   svg#map{width:100%;height:100%;}
 
   /* ファイルリストエリア（ちずのした） */
@@ -349,7 +349,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.2.4</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.2.6</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
@@ -614,6 +614,8 @@ svg#map-pref{position:relative;z-index:2;}
 
     <div class="sec">
       <a href="./world.html" class="nav-link">🌍 世界版（訪問国マップ）へ</a>
+      <button class="nav-link" id="btn-sp-tab-pref" style="margin-top:6px;">🗺 都道府県ビューへ</button>
+      <button class="nav-link" id="btn-sp-tab-muni" style="margin-top:6px;display:none;">🏘 市区町村ビューへ</button>
     </div>
 
     <div class="sec">
@@ -1441,7 +1443,7 @@ async function matchPoints(pts) {
   // ポイントを外ループ・featuresを内ループにするヨ！
   // こうするとバッチごとの計算量が「BATCH×features数(約1800)」になるヨ！
   // ぎゃく（features外ループ）だと1バッチで「BATCH×何万ポイント」になってフリーズするヨ！
-  const BATCH = 5;
+  const BATCH = 50;
   for (let i = 0; i < pts.length; i += BATCH) {
     const ptBatch = pts.slice(i, i + BATCH);
     ptBatch.forEach(p => {
@@ -2717,7 +2719,8 @@ resizeSvg();
     const hint = document.getElementById('gesture-hint');
     const HINT_KEY = 'gestureHintShown_index';
     let hintTimer = null;
-    let hintShown = localStorage.getItem(HINT_KEY) === '1';
+    let hintShown = false;
+    try { hintShown = localStorage.getItem(HINT_KEY) === '1'; } catch(e) {}
 
     const mapEl = document.getElementById('map-wrap');
     mapEl.addEventListener('touchstart', e => {
@@ -2727,7 +2730,7 @@ resizeSvg();
         hintTimer = setTimeout(() => {
           hint.classList.remove('show');
           hintShown = true;
-          localStorage.setItem(HINT_KEY, '1');
+          try { localStorage.setItem(HINT_KEY, '1'); } catch(e) {}
         }, 1800);
       } else {
         hint.classList.remove('show');
@@ -2753,6 +2756,20 @@ document.getElementById('sp-drawer').addEventListener('click', e => {
   if (e.target === document.getElementById('sp-drawer')) {
     document.getElementById('sp-drawer').classList.remove('open');
   }
+});
+
+// スマホ用 都道府県ビュー / 市区町村ビュー きりかえ
+document.getElementById('btn-sp-tab-pref').addEventListener('click', () => {
+  document.getElementById('sp-drawer').classList.remove('open');
+  document.getElementById('tab-pref').click();
+  document.getElementById('btn-sp-tab-pref').style.display = 'none';
+  document.getElementById('btn-sp-tab-muni').style.display = 'flex';
+});
+document.getElementById('btn-sp-tab-muni').addEventListener('click', () => {
+  document.getElementById('sp-drawer').classList.remove('open');
+  document.getElementById('tab-muni').click();
+  document.getElementById('btn-sp-tab-muni').style.display = 'none';
+  document.getElementById('btn-sp-tab-pref').style.display = 'flex';
 });
 
 // スマホ用GPSよみこみ
