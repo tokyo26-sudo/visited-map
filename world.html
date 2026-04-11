@@ -163,6 +163,18 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 @keyframes spin{to{transform:rotate(360deg);}}
 #load-txt{font-size:12px;color:var(--muted);text-align:center;max-width:260px;line-height:1.6;}
 
+/* 確認ダイアログ */
+.confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:800;display:flex;align-items:center;justify-content:center;}
+.confirm-box{background:var(--panel2);border:1px solid var(--gold);border-radius:10px;padding:20px 22px;max-width:300px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.6);}
+.confirm-box p{font-size:13px;line-height:1.7;color:var(--text);margin-bottom:14px;}
+.confirm-box strong{color:var(--gold-lt);}
+.confirm-btns{display:flex;gap:8px;}
+.confirm-btns button{flex:1;padding:8px;border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font);transition:all .18s;}
+.confirm-yes{background:#c0392b;color:#fff;border:none;font-weight:700;}
+.confirm-yes:hover{background:#e74c3c;}
+.confirm-no{background:transparent;color:var(--muted);border:1px solid var(--border);}
+.confirm-no:hover{border-color:var(--text);color:var(--text);}
+
 /* プログレスオーバレイ（ファイル処理中） */
 #proc-overlay{display:none;position:absolute;inset:0;background:rgba(10,13,18,.6);z-index:500;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
 #proc-overlay.show{display:flex;}
@@ -224,8 +236,8 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title hd-title-pc">GPSログで訪れた国を可視化</div>
-    <div class="hd-title hd-title-sp">GPS訪問国マップ <span style="font-size:9px;color:var(--muted);font-family:var(--font);">v1.4.8</span></div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.8</span></div>
+    <div class="hd-title hd-title-sp">GPS訪問国マップ <span style="font-size:9px;color:var(--muted);font-family:var(--font);">v1.4.9</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.9</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -335,6 +347,17 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- 全クリア確認ダイアログ -->
+<div class="confirm-overlay" id="confirm-clear" style="display:none;">
+  <div class="confirm-box">
+    <p><strong>全データをクリア</strong>しますか？<br>読み込んだファイルと訪問データがすべて消えます。</p>
+    <div class="confirm-btns">
+      <button class="confirm-no" id="confirm-no">キャンセル</button>
+      <button class="confirm-yes" id="confirm-yes">🗑 クリア</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // =====================================================
@@ -1635,7 +1658,7 @@ fileInEl.addEventListener('change', () => {
 // =====================================================
 // 全クリア
 // =====================================================
-document.getElementById('btn-clear').addEventListener('click', () => {
+function execClear() {
   fileList = [];
   photoList = [];
   allPoints = [];
@@ -1651,6 +1674,23 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   updateStats();
   document.getElementById('s-points').textContent = '0';
   toast('全データをクリアしました');
+}
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  document.getElementById('confirm-clear').style.display = 'flex';
+});
+document.getElementById('confirm-yes').addEventListener('click', () => {
+  document.getElementById('confirm-clear').style.display = 'none';
+  execClear();
+});
+document.getElementById('confirm-no').addEventListener('click', () => {
+  document.getElementById('confirm-clear').style.display = 'none';
+});
+// オーバーレイのそとをクリックでとじる
+document.getElementById('confirm-clear').addEventListener('click', e => {
+  if (e.target === document.getElementById('confirm-clear')) {
+    document.getElementById('confirm-clear').style.display = 'none';
+  }
 });
 
 // =====================================================
