@@ -267,7 +267,7 @@ svg#map-pref{position:relative;z-index:2;}
   .stat-l{font-size:8px;letter-spacing:0;}
   /* すまほ：タイトルを短く */
   .hd-title::before{content:'GPS市町村マップ ';}
-  .hd-title::after{content:'v1.3.1';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
+  .hd-title::after{content:'v1.3.2';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
   .hd-title span, .hd-title{font-size:0;}
   .hd-title::before{font-size:13px;font-family:var(--font-h);color:var(--gold-lt);}
   /* すまほ：使い方ボタンかくす */
@@ -292,7 +292,7 @@ svg#map-pref{position:relative;z-index:2;}
   svg#map{width:100%;height:100%;}
 
   /* ファイルリストエリア（ちずのした） */
-  #sp-file-area{order:2;background:var(--panel);border-top:1px solid var(--border);padding:8px 12px;display:none;max-height:30vh;overflow-y:auto;}
+  #sp-file-area{order:2;background:var(--panel);border-top:2px solid var(--border);padding:8px 12px;display:none;max-height:30vh;overflow-y:auto;}
   #sp-file-area.show{display:block;}
   #sp-file-area .sec-h{font-size:10px;text-transform:uppercase;letter-spacing:.15em;color:var(--muted);margin-bottom:6px;}
 
@@ -349,7 +349,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.3.1</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.3.2</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
@@ -1045,10 +1045,19 @@ function updateHeaderHeight() {
   const h = document.querySelector('header')?.offsetHeight || 44;
   document.documentElement.style.setProperty('--header-h', h + 'px');
 }
-function updateMapHeight() {}
+function updateMapHeight() {
+  if (!window.matchMedia('(max-width: 768px)').matches) return;
+  const headerH = document.querySelector('header')?.offsetHeight || 44;
+  const spFileEl = document.getElementById('sp-file-area');
+  const spFileH = (spFileEl && spFileEl.classList.contains('show')) ? spFileEl.offsetHeight : 0;
+  const mapH = window.innerHeight - headerH - spFileH;
+  document.getElementById('map-wrap').style.height = Math.max(mapH, 200) + 'px';
+}
 updateHeaderHeight();
+updateMapHeight();
 window.addEventListener('resize', () => {
   updateHeaderHeight();
+  updateMapHeight();
   resizeSvg();
   if (!topoData) return;
   initProj();
@@ -1793,6 +1802,7 @@ async function handleFile(file) {
     updateSidebar(document.getElementById('pref-sel').value);
     updateStats();
     showProg(false);
+    setTimeout(() => updateMapHeight(), 50);
     document.getElementById('btn-clear').style.display = 'block';
     const totalVisited = features.filter(f => (visitedMap.get(getCode(f)) || 0) > 0).length;
     toast(`✅ ${points.length}ポイント読み込み — 累計 ${totalVisited}市区町村を訪問`);
