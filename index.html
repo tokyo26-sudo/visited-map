@@ -104,7 +104,8 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .mi-cnt{font-size:10px;color:var(--muted);}
 .empty{text-align:center;padding:26px 14px;color:var(--muted);font-size:11px;line-height:1.8;}
 .empty span{font-size:24px;display:block;margin-bottom:6px;}
-.err{color:#f85149;font-size:11px;margin-top:4px;display:none;}
+.err{color:#f85149;font-size:11px;margin-top:4px;display:none;cursor:pointer;line-height:1.6;}
+.err::after{content:' （タップして閉じる）';font-size:10px;color:#f8514988;}
 
 /* マップ */
 #map-wrap{flex:1;position:relative;overflow:hidden;}
@@ -266,7 +267,7 @@ svg#map-pref{position:relative;z-index:2;}
   .stat-l{font-size:8px;letter-spacing:0;}
   /* すまほ：タイトルを短く */
   .hd-title::before{content:'GPS市町村マップ ';}
-  .hd-title::after{content:'v1.2.3';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
+  .hd-title::after{content:'v1.2.4';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
   .hd-title span, .hd-title{font-size:0;}
   .hd-title::before{font-size:13px;font-family:var(--font-h);color:var(--gold-lt);}
   /* すまほ：使い方ボタンかくす */
@@ -348,7 +349,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.2.3</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.2.4</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
@@ -1224,7 +1225,9 @@ async function processPhoto(file) {
     setProgress(10, 'EXIF読み込み中...');
     const exif = await exifr.parse(file, { gps: true });
     if (!exif || exif.latitude == null || exif.longitude == null) {
-      setErr('GPS情報が見つかりませんでした。AndroidではOS仕様（プライバシー保護のため）によりGPS情報が読み取れない場合があります。iPhoneまたはPCからお試しください。');
+      setErr(isAndroid()
+        ? 'GPS情報が見つかりませんでした。AndroidではOS仕様（プライバシー保護のため）によりGPS情報が読み取れない場合があります。iPhoneまたはPCからお試しください。'
+        : 'GPS情報が見つかりませんでした（GPS情報つき写真のみ対応）');
       showProg(false);
       return;
     }
@@ -1934,12 +1937,16 @@ function setProgress(pct, txt) {
   document.getElementById('prog-fill').style.width = pct+'%';
   document.getElementById('prog-txt').textContent = txt;
 }
+const isAndroid = () => /android/i.test(navigator.userAgent);
+
 let _errTimer = null;
 function setErr(msg) {
   const e = document.getElementById('err');
-  e.textContent = msg; e.style.display = msg ? 'block' : 'none';
-  if (_errTimer) clearTimeout(_errTimer);
-  if (msg) _errTimer = setTimeout(() => { e.style.display = 'none'; }, 6000);
+  if (_errTimer) { clearTimeout(_errTimer); _errTimer = null; }
+  if (!msg) { e.style.display = 'none'; e.textContent = ''; return; }
+  e.textContent = msg;
+  e.style.display = 'block';
+  e.onclick = () => { e.style.display = 'none'; e.textContent = ''; };
 }
 function toast(msg) {
   const t = document.getElementById('toast');
