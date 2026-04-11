@@ -246,7 +246,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.9</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.9-DEBUG</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l">訪問した市区町村</div></div>
@@ -998,7 +998,8 @@ function hideTip() { tipEl.style.opacity = '0'; }
 async function processPhoto(file) {
   try {
     setProgress(10, 'EXIF読み込み中...');
-    const exif = await exifr.parse(file, { gps: true, tiff: false });
+    const exif = await exifr.parse(file, { gps: true });
+    console.log('EXIF result:', exif);
     if (!exif || exif.latitude == null || exif.longitude == null) {
       setErr('GPS情報が見つかりませんでした（GPS付き写真のみ対応）');
       showProg(false);
