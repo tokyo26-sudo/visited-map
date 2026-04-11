@@ -266,7 +266,7 @@ svg#map-pref{position:relative;z-index:2;}
   .stat-l{font-size:8px;letter-spacing:0;}
   /* すまほ：タイトルを短く */
   .hd-title::before{content:'GPS市町村マップ ';}
-  .hd-title::after{content:'v1.2.0';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
+  .hd-title::after{content:'v1.2.3';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
   .hd-title span, .hd-title{font-size:0;}
   .hd-title::before{font-size:13px;font-family:var(--font-h);color:var(--gold-lt);}
   /* すまほ：使い方ボタンかくす */
@@ -348,7 +348,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.2.0</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.2.3</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
@@ -1224,7 +1224,7 @@ async function processPhoto(file) {
     setProgress(10, 'EXIF読み込み中...');
     const exif = await exifr.parse(file, { gps: true });
     if (!exif || exif.latitude == null || exif.longitude == null) {
-      setErr('GPS情報が見つかりませんでした（GPS付き写真のみ対応）');
+      setErr('GPS情報が見つかりませんでした。AndroidではOS仕様（プライバシー保護のため）によりGPS情報が読み取れない場合があります。iPhoneまたはPCからお試しください。');
       showProg(false);
       return;
     }
@@ -1934,9 +1934,12 @@ function setProgress(pct, txt) {
   document.getElementById('prog-fill').style.width = pct+'%';
   document.getElementById('prog-txt').textContent = txt;
 }
+let _errTimer = null;
 function setErr(msg) {
   const e = document.getElementById('err');
   e.textContent = msg; e.style.display = msg ? 'block' : 'none';
+  if (_errTimer) clearTimeout(_errTimer);
+  if (msg) _errTimer = setTimeout(() => { e.style.display = 'none'; }, 6000);
 }
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -2773,6 +2776,7 @@ document.getElementById('btn-sp-clear').addEventListener('click', () => {
     fileList = []; photoList = []; photoMap.clear(); visitedMap.clear();
     if (features.length) redrawMuni();
     updateFileList(); updateSidebar(); updateStats();
+    updateSpFileArea();
     document.getElementById('btn-clear').style.display = 'none';
     document.getElementById('btn-sp-clear').style.display = 'none';
     document.getElementById('fileIn').value = '';
@@ -2935,6 +2939,7 @@ document.getElementById('btn-clear').addEventListener('click', () => {
     fileList = []; photoList = []; photoMap.clear(); visitedMap.clear();
     if (features.length) redrawMuni();
     updateFileList(); updateSidebar(); updateStats();
+    updateSpFileArea();
     document.getElementById('btn-clear').style.display = 'none';
     document.getElementById('btn-sp-clear').style.display = 'none';
     document.getElementById('fileIn').value = '';
