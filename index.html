@@ -1690,8 +1690,8 @@ dropEl.addEventListener('dragover', e => { e.preventDefault(); dropEl.classList.
 dropEl.addEventListener('dragleave', () => dropEl.classList.remove('over'));
 dropEl.addEventListener('drop', async e => {
   e.preventDefault(); dropEl.classList.remove('over');
-  const files = [...e.dataTransfer.files].filter(f => /\.(kml|kmz|gpx|json)$/i.test(f.name));
-  if (!files.length) { setErr('.kml / .kmz / .gpx / .json ファイルをどうぞ'); return; }
+  const files = [...e.dataTransfer.files].filter(f => /\.(kml|kmz|gpx|json|jpg|jpeg)$/i.test(f.name));
+  if (!files.length) { setErr('.kml / .kmz / .gpx / .json / .jpg ファイルをどうぞ'); return; }
   for (const f of files) await handleFile(f);
 });
 
