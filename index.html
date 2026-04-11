@@ -9,6 +9,7 @@
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://unpkg.com/topojson-client@3/dist/topojson-client.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr@7/dist/full.umd.js"></script>
 <style>
 :root {
   --bg:      #0a0d12;
@@ -111,7 +112,8 @@ svg#map{width:100%;background:#2860b0;position:relative;z-index:2;display:block;
 svg#map-pref{position:relative;z-index:2;}
 
 /* ツールチップ */
-.tooltip{position:absolute;pointer-events:none;background:var(--panel2);border:1px solid var(--gold);border-radius:8px;padding:9px 13px;box-shadow:0 4px 20px rgba(0,0,0,.55);font-size:12px;line-height:1.6;opacity:0;transition:opacity .15s;z-index:100;max-width:200px;}
+.tooltip{position:absolute;pointer-events:none;background:var(--panel2);border:1px solid var(--gold);border-radius:8px;padding:9px 13px;box-shadow:0 4px 20px rgba(0,0,0,.55);font-size:12px;line-height:1.6;opacity:0;transition:opacity .15s;z-index:100;max-width:220px;}
+.tt-thumb{width:100%;max-width:180px;height:100px;object-fit:cover;border-radius:5px;margin-bottom:6px;display:block;}
 .tt-name{font-family:var(--font-h);font-size:14px;color:var(--gold-lt);margin-bottom:1px;}
 .tt-pref{font-size:11px;color:var(--muted);}
 .tt-cnt{margin-top:4px;font-size:12px;color:#e07020;font-weight:700;}
@@ -244,7 +246,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.8</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.9</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l">訪問した市区町村</div></div>
@@ -329,9 +331,9 @@ svg#map-pref{position:relative;z-index:2;}
   <div class="sec">
     <div class="sec-h">📁 GPSログデータ（gpx / kml / kmz / json）</div>
     <div class="drop" id="drop">
-      <input type="file" accept=".kml,.kmz,.gpx,.json" id="fileIn" multiple>
+      <input type="file" accept=".kml,.kmz,.gpx,.json,.jpg,.jpeg" id="fileIn" multiple>
       <span class="di">📂</span>
-      <p><strong>クリック</strong> または ドラッグ&amp;ドロップ<br>.kml / .kmz / .gpx / .json（Googleタイムライン）対応</p>
+      <p><strong>クリック</strong> または ドラッグ&amp;ドロップ<br>.kml / .kmz / .gpx / .json（Googleタイムライン）/ .jpg（写真）対応</p>
     </div>
     <div class="prog" id="prog">
       <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
@@ -480,6 +482,7 @@ svg#map-pref{position:relative;z-index:2;}
     <div class="load-urls" id="load-urls"></div>
   </div>
   <div class="tooltip" id="tip">
+    <img class="tt-thumb" id="tip-thumb" style="display:none;" alt="">
     <div class="tt-name" id="tip-name"></div>
     <div class="tt-pref" id="tip-pref"></div>
     <div class="tt-cnt" id="tip-cnt"></div>
@@ -496,6 +499,7 @@ svg#map-pref{position:relative;z-index:2;}
 let topoData   = null;
 let features   = [];
 let visitedMap = new Map();  // code -> count（表示用・合算）
+let photoMap   = new Map();  // code -> {thumb, name}（しゃしんデタ）
 let kmlPts     = [];
 let kmlLines   = [];
 
@@ -563,7 +567,6 @@ function rebuildVisitedMap() {
   visitedMap.clear();
   fileList.forEach(f => {
     if (!f.enabled) return;
-    // 高速除外ONかつfilterCacheがあればそちらをつかう
     let cache;
     if (speedFilterThreshold === 200 && f.cacheFiltered200) {
       cache = f.cacheFiltered200;
@@ -575,6 +578,10 @@ function rebuildVisitedMap() {
     cache.forEach((cnt, code) => {
       visitedMap.set(code, (visitedMap.get(code) || 0) + cnt);
     });
+  });
+  // しゃしんポイント（100ポイント固定）をくわえる
+  photoMap.forEach((info, code) => {
+    visitedMap.set(code, (visitedMap.get(code) || 0) + 100 * info.count);
   });
 }
 
@@ -931,11 +938,15 @@ function redrawLabels() {
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
       .attr('pointer-events', 'none')
-      .attr('font-size', 9 / 50)  // sc=50想定で初期値
+      .attr('font-size', 9 / 50)
       .style('font-family', "'Noto Sans JP', sans-serif")
       .style('fill', 'rgba(255,255,255,0.6)')
       .style('font-weight', '400')
-      .text(d => getName(d));
+      .text(d => {
+        const name = getName(d);
+        const code = getCode(d);
+        return photoMap.has(code) ? name + ' 📷' : name;
+      });
 }
 
 // =====================================================
@@ -953,6 +964,16 @@ function redrawKML() {
 const tipEl = document.getElementById('tip');
 function showTip(ev, d, cnt) {
   const p = d.properties || {};
+  const code = getCode(d);
+  // サムネひょうじ
+  const thumbEl = document.getElementById('tip-thumb');
+  const photo = photoMap.get(code);
+  if (photo) {
+    thumbEl.src = photo.thumb;
+    thumbEl.style.display = 'block';
+  } else {
+    thumbEl.style.display = 'none';
+  }
   document.getElementById('tip-name').textContent = p.N03_004 || p.N03_003 || p.N03_002 || '不明';
   document.getElementById('tip-pref').textContent = p.N03_001 || '';
   const ce = document.getElementById('tip-cnt');
@@ -970,6 +991,75 @@ function moveTip(ev) {
   tipEl.style.top  = y + 'px';
 }
 function hideTip() { tipEl.style.opacity = '0'; }
+
+// =====================================================
+// 写真EXIF読み込み
+// =====================================================
+async function processPhoto(file) {
+  try {
+    setProgress(10, 'EXIF読み込み中...');
+    const exif = await exifr.parse(file, { gps: true, tiff: false });
+    if (!exif || exif.latitude == null || exif.longitude == null) {
+      setErr('GPS情報が見つかりませんでした（GPS付き写真のみ対応）');
+      showProg(false);
+      return;
+    }
+    const lat = exif.latitude;
+    const lon = exif.longitude;
+
+    setProgress(30, '市区町村を照合中...');
+    // 1ポイントでmatchPoints
+    const cache = await matchPoints([{ lat, lon }]);
+    if (!cache.size) {
+      setErr('対応する市区町村が見つかりませんでした');
+      showProg(false);
+      return;
+    }
+
+    // サムネイル生成（100×100px）
+    const thumb = await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 100; canvas.height = 100;
+          const ctx = canvas.getContext('2d');
+          const size = Math.min(img.width, img.height);
+          const sx = (img.width - size) / 2;
+          const sy = (img.height - size) / 2;
+          ctx.drawImage(img, sx, sy, size, size, 0, 0, 100, 100);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // photoMapにとうろく（おなじ市区町村は最新サムネをつかう、まい数はかさねる）
+    cache.forEach((_, code) => {
+      const existing = photoMap.get(code);
+      photoMap.set(code, {
+        thumb,
+        name: file.name,
+        count: existing ? existing.count + 1 : 1
+      });
+    });
+
+    rebuildVisitedMap();
+    redrawMuni();
+    updateSidebar(document.getElementById('pref-sel').value);
+    updateStats();
+    showProg(false);
+    const codes = [...cache.keys()];
+    const muniName = codes.length ? getName(features.find(f => getCode(f) === codes[0]) || {}) : '不明';
+    toast(`📷 ${file.name} → ${muniName} に追加`);
+  } catch(e) {
+    showProg(false);
+    setErr('写真の読み込みに失敗: ' + e.message);
+    console.error(e);
+  }
+}
 
 // =====================================================
 // GPX解析
@@ -1211,7 +1301,8 @@ function updateSidebar(filt = '') {
       const mi = document.createElement('div');
       mi.className = 'mi';
       const glow = cnt > 0 ? `box-shadow:0 0 5px ${getColor(cnt)}88` : '';
-      mi.innerHTML = `<div class="dot" style="background:${getColor(cnt)};${glow}"></div><span class="mi-name">${name}</span>${cnt > 0 ? `<span class="mi-cnt">${cnt}pt</span>` : ''}`;
+      const hasPhoto = photoMap.has(getCode(f));
+      mi.innerHTML = `<div class="dot" style="background:${getColor(cnt)};${glow}"></div><span class="mi-name">${hasPhoto ? '📷 ' : ''}${name}</span>${cnt > 0 ? `<span class="mi-cnt">${cnt}pt</span>` : ''}`;
       mi.addEventListener('click', () => zoomTo(f));
       g.appendChild(mi);
     });
@@ -1350,6 +1441,13 @@ function confirmDialog(msg) {
 // =====================================================
 async function handleFile(file) {
   setErr(''); showProg(true); setProgress(0, '読み込み中...');
+
+  // JPG/JPEGはしゃしんEXIFよみこみ
+  if (/\.(jpg|jpeg)$/i.test(file.name)) {
+    await processPhoto(file);
+    return;
+  }
+
   try {
     const xml = await file.text();
 
