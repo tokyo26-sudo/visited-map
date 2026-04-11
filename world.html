@@ -221,7 +221,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title">GPSログで訪れた国を可視化</div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.5</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.6</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -1641,11 +1641,17 @@ document.querySelectorAll('input[name="speed-filter"]').forEach(radio => {
 // 地図初期化
 // =====================================================
 function initMap() {
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
   map = L.map('map', {
     center: [30, 10],
     zoom: 3,
     zoomControl: true,
-    worldCopyJump: false
+    worldCopyJump: false,
+    dragging: !isMobile,   // すまほはドラッグむこう（ページスクロールのため）
+    touchZoom: true,       // ゆびにほんピンチズームはつねにゆうこう
+    scrollWheelZoom: true,
+    tap: false,            // あんどろいどタップバグ対策
   });
 
   // タイルレイヤ（ダクテマ）
@@ -1666,46 +1672,25 @@ function initMap() {
       initCountryLayer(data);
       toast('地図データ読み込み完了！GPSログデータをどうぞ');
     } else {
-      // Natural Earthが読み込めなくてもマーカレイヤは追加
       markersLayer.addTo(map);
       toast('地図データ（国境線）の読み込みに失敗しました。地点は表示できます。');
     }
   });
 
-  // ===== スマホ用ジェスチャーハンドリング =====
-  if (window.matchMedia('(max-width: 768px)').matches) {
-    // デフォルトはドラッグ・タッチズームを無効化
-    map.dragging.disable();
-    map.touchZoom.disable();
-    map.scrollWheelZoom.disable();
-
+  // ===== すまほ：ゆびいっぽんヒントひょうじ =====
+  if (isMobile) {
     let hintTimer = null;
     const hint = document.getElementById('gesture-hint');
-
     const mapEl = document.getElementById('map');
 
     mapEl.addEventListener('touchstart', e => {
-      if (e.touches.length >= 2) {
-        // ゆびにほん：ちずそうさ有効
-        map.dragging.enable();
-        map.touchZoom.enable();
-        hint.classList.remove('show');
-        clearTimeout(hintTimer);
-      } else {
-        // ゆびいっぽん：ちずそうさ無効（ページスクロール）
-        map.dragging.disable();
-        map.touchZoom.disable();
-        // ヒントをひょうじ（1秒後に消す）
+      if (e.touches.length === 1) {
         hint.classList.add('show');
         clearTimeout(hintTimer);
         hintTimer = setTimeout(() => hint.classList.remove('show'), 1200);
-      }
-    }, {passive: true});
-
-    mapEl.addEventListener('touchend', e => {
-      if (e.touches.length < 2) {
-        map.dragging.disable();
-        map.touchZoom.disable();
+      } else {
+        hint.classList.remove('show');
+        clearTimeout(hintTimer);
       }
     }, {passive: true});
   }
