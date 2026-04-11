@@ -246,7 +246,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.9-DEBUG2</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.0.9</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l">訪問した市区町村</div></div>
@@ -500,6 +500,8 @@ let topoData   = null;
 let features   = [];
 let visitedMap = new Map();  // code -> count（表示用・合算）
 let photoMap   = new Map();  // code -> {thumb, name}（しゃしんデタ）
+let photoList  = [];         // [{id, fileName, muniName, code, thumb, enabled}]
+let nextPhotoId = 1;
 let kmlPts     = [];
 let kmlLines   = [];
 
@@ -565,6 +567,7 @@ function filterBySpeed(points, maxKmh) {
 
 function rebuildVisitedMap() {
   visitedMap.clear();
+  photoMap.clear();
   fileList.forEach(f => {
     if (!f.enabled) return;
     let cache;
@@ -579,9 +582,12 @@ function rebuildVisitedMap() {
       visitedMap.set(code, (visitedMap.get(code) || 0) + cnt);
     });
   });
-  // しゃしんポイント（100ポイント固定）をくわえる
-  photoMap.forEach((info, code) => {
-    visitedMap.set(code, (visitedMap.get(code) || 0) + 100 * info.count);
+  // しゃしんポイント（100ポイント固定）をくわえる、photoMapも再構築
+  photoList.forEach(p => {
+    if (!p.enabled) return;
+    visitedMap.set(p.code, (visitedMap.get(p.code) || 0) + 100);
+    // photoMapは最新サムネをつかう（リストの後ろが最新）
+    photoMap.set(p.code, { thumb: p.thumb, name: p.fileName });
   });
 }
 
@@ -999,7 +1005,6 @@ async function processPhoto(file) {
   try {
     setProgress(10, 'EXIF読み込み中...');
     const exif = await exifr.parse(file, { gps: true });
-    console.log('EXIF result:', exif);
     if (!exif || exif.latitude == null || exif.longitude == null) {
       setErr('GPS情報が見つかりませんでした（GPS付き写真のみ対応）');
       showProg(false);
@@ -1037,23 +1042,26 @@ async function processPhoto(file) {
       reader.readAsDataURL(file);
     });
 
-    // photoMapにとうろく（おなじ市区町村は最新サムネをつかう、まい数はかさねる）
+    // photoListにとうろく
+    const firstCode = [...cache.keys()][0];
+    const muniName = firstCode ? getName(features.find(f => getCode(f) === firstCode) || {}) : '不明';
     cache.forEach((_, code) => {
-      const existing = photoMap.get(code);
-      photoMap.set(code, {
+      photoList.push({
+        id: nextPhotoId++,
+        fileName: file.name,
+        muniName,
+        code,
         thumb,
-        name: file.name,
-        count: existing ? existing.count + 1 : 1
+        enabled: true
       });
     });
 
     rebuildVisitedMap();
     redrawMuni();
+    updateFileList();
     updateSidebar(document.getElementById('pref-sel').value);
     updateStats();
     showProg(false);
-    const codes = [...cache.keys()];
-    const muniName = codes.length ? getName(features.find(f => getCode(f) === codes[0]) || {}) : '不明';
     toast(`📷 ${file.name} → ${muniName} に追加`);
   } catch(e) {
     showProg(false);
@@ -1556,16 +1564,16 @@ async function handleFile(file) {
 function updateFileList() {
   const el = document.getElementById('file-list');
   const ctrlEl = document.getElementById('file-list-controls');
-  if (!fileList.length) {
+  const totalItems = fileList.length + photoList.length;
+  if (!totalItems) {
     el.innerHTML = '';
     ctrlEl.style.display = 'none';
     return;
   }
-  // 2ファイル以上のときだけボタンを表示
-  ctrlEl.style.display = fileList.length >= 2 ? 'flex' : 'none';
+  ctrlEl.style.display = totalItems >= 2 ? 'flex' : 'none';
   el.innerHTML = '';
 
-  // 名前から年月をとりだしてソート（古い順）
+  // GPSログファイルリスト
   const sorted = [...fileList].sort((a, b) => {
     const getYM = name => {
       const m = name.match(/(\d{4})年(\d{1,2})月/);
@@ -1577,17 +1585,34 @@ function updateFileList() {
   sorted.forEach(entry => {
     const row = document.createElement('div');
     row.className = 'fl-row';
-    // ファイル名を短縮表示
     const shortName = entry.name.length > 22
       ? entry.name.slice(0, 20) + '…'
       : entry.name;
     row.innerHTML = `
       <label class="fl-toggle">
-        <input type="checkbox" ${entry.enabled ? 'checked' : ''} data-id="${entry.id}">
+        <input type="checkbox" ${entry.enabled ? 'checked' : ''} data-id="${entry.id}" data-type="gps">
         <span class="fl-slider"></span>
       </label>
       <span class="fl-name ${entry.enabled ? '' : 'fl-off'}" title="${entry.name}">${shortName}</span>
-      <button class="fl-del" data-id="${entry.id}" title="このファイルを削除">✕</button>
+      <button class="fl-del" data-id="${entry.id}" data-type="gps" title="このファイルを削除">✕</button>
+    `;
+    el.appendChild(row);
+  });
+
+  // しゃしんリスト
+  photoList.forEach(entry => {
+    const row = document.createElement('div');
+    row.className = 'fl-row';
+    const shortFile = entry.fileName.length > 14
+      ? entry.fileName.slice(0, 12) + '…'
+      : entry.fileName;
+    row.innerHTML = `
+      <label class="fl-toggle">
+        <input type="checkbox" ${entry.enabled ? 'checked' : ''} data-id="${entry.id}" data-type="photo">
+        <span class="fl-slider"></span>
+      </label>
+      <span class="fl-name ${entry.enabled ? '' : 'fl-off'}" title="${entry.fileName}">📷 ${shortFile} ${entry.muniName}</span>
+      <button class="fl-del" data-id="${entry.id}" data-type="photo" title="この写真を削除">✕</button>
     `;
     el.appendChild(row);
   });
@@ -1596,15 +1621,19 @@ function updateFileList() {
   el.querySelectorAll('input[type=checkbox]').forEach(cb => {
     cb.addEventListener('change', () => {
       const id = parseInt(cb.dataset.id);
-      const entry = fileList.find(f => f.id === id);
-      if (entry) {
-        entry.enabled = cb.checked;
-        cb.closest('.fl-row').querySelector('.fl-name').classList.toggle('fl-off', !cb.checked);
-        rebuildVisitedMap();
-        redrawMuni();
-        updateSidebar(document.getElementById('pref-sel').value);
-        updateStats();
+      const type = cb.dataset.type;
+      if (type === 'gps') {
+        const entry = fileList.find(f => f.id === id);
+        if (entry) entry.enabled = cb.checked;
+      } else {
+        const entry = photoList.find(p => p.id === id);
+        if (entry) entry.enabled = cb.checked;
       }
+      cb.closest('.fl-row').querySelector('.fl-name').classList.toggle('fl-off', !cb.checked);
+      rebuildVisitedMap();
+      redrawMuni();
+      updateSidebar(document.getElementById('pref-sel').value);
+      updateStats();
     });
   });
 
@@ -1612,13 +1641,18 @@ function updateFileList() {
   el.querySelectorAll('.fl-del').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = parseInt(btn.dataset.id);
-      fileList = fileList.filter(f => f.id !== id);
+      const type = btn.dataset.type;
+      if (type === 'gps') {
+        fileList = fileList.filter(f => f.id !== id);
+      } else {
+        photoList = photoList.filter(p => p.id !== id);
+      }
       rebuildVisitedMap();
       redrawMuni();
       updateFileList();
       updateSidebar(document.getElementById('pref-sel').value);
       updateStats();
-      if (!fileList.length) {
+      if (!fileList.length && !photoList.length) {
         document.getElementById('btn-clear').style.display = 'none';
       }
     });
@@ -1701,6 +1735,8 @@ document.getElementById('btn-sample').addEventListener('click', () => {
 
 document.getElementById('btn-clear').addEventListener('click', () => {
   fileList = [];
+  photoList = [];
+  photoMap.clear();
   visitedMap.clear();
   if (features.length) redrawMuni();
   updateFileList();
