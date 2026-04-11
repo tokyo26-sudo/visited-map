@@ -260,7 +260,20 @@ svg#map-pref{position:relative;z-index:2;}
   .hd-sub{display:none;}
   .hd-stats{gap:8px;}
   .stat-n{font-size:16px;}
-  .stat-l{font-size:9px;}
+  .stat-l{font-size:8px;letter-spacing:0;}
+  /* すまほ：タイトルを短く */
+  .hd-title::before{content:'GPS市町村マップ';}
+  .hd-title span, .hd-title{font-size:0;}
+  .hd-title::before{font-size:13px;font-family:var(--font-h);color:var(--gold-lt);}
+  /* すまほ：使い方ボタンかくす */
+  #btn-help{display:none;}
+  /* すまほ：ラベルを短く */
+  #stat-l-visited::before{content:'訪問市町村';}
+  #stat-l-visited{font-size:0;}
+  #stat-l-visited::before{font-size:8px;color:var(--muted);}
+  #stat-l-total::before{content:'全市町村';}
+  #stat-l-total{font-size:0;}
+  #stat-l-total::before{font-size:8px;color:var(--muted);}
   .hd-div{height:18px;}
 
   /* bodyをたてならびに */
@@ -331,12 +344,12 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.1.0</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.1.1</span></div>
   </div>
   <div class="hd-stats">
-    <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l">訪問した市区町村</div></div>
+    <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
     <div class="hd-div"></div>
-    <div class="stat"><div class="stat-n" id="s-total">-</div><div class="stat-l">全市区町村数</div></div>
+    <div class="stat"><div class="stat-n" id="s-total">-</div><div class="stat-l" id="stat-l-total">全市区町村数</div></div>
     <div class="hd-div"></div>
     <div class="stat"><div class="stat-n" id="s-pct">0%</div><div class="stat-l">達成率</div></div>
     <div class="hd-div"></div>
@@ -601,7 +614,7 @@ svg#map-pref{position:relative;z-index:2;}
     <div class="sec">
       <div class="sec-h">📁 GPSログデータ</div>
       <div class="drop" id="sp-drop">
-        <input type="file" accept=".kml,.kmz,.gpx,.json,.jpg,.jpeg" id="sp-fileIn" multiple>
+        <input type="file" accept=".kml,.kmz,.gpx,.json,.jpg,.jpeg,image/jpeg,image/jpg" id="sp-fileIn" multiple>
         <span class="di">📂</span>
         <p><strong>クリック</strong> または ドラッグ&amp;ドロップ<br>.kml / .kmz / .gpx / .json / .jpg（写真）対応</p>
       </div>
@@ -2635,7 +2648,6 @@ resizeSvg();
 
   // ===== スマホ用ジェスチャーハンドリング =====
   if (window.matchMedia('(max-width: 768px)').matches) {
-    // D3のzoomをゆびにほんのみ有効にする
     zoom.filter(e => {
       if (e.type === 'touchstart' || e.type === 'touchmove' || e.type === 'touchend') {
         return e.touches && e.touches.length >= 2;
@@ -2644,14 +2656,21 @@ resizeSvg();
     });
     svg.call(zoom);
 
-    let hintTimer = null;
     const hint = document.getElementById('gesture-hint');
+    const HINT_KEY = 'gestureHintShown_index';
+    let hintTimer = null;
+    let hintShown = localStorage.getItem(HINT_KEY) === '1';
+
     const mapEl = document.getElementById('map-wrap');
     mapEl.addEventListener('touchstart', e => {
-      if (e.touches.length === 1) {
+      if (e.touches.length === 1 && !hintShown) {
         hint.classList.add('show');
         clearTimeout(hintTimer);
-        hintTimer = setTimeout(() => hint.classList.remove('show'), 1200);
+        hintTimer = setTimeout(() => {
+          hint.classList.remove('show');
+          hintShown = true;
+          localStorage.setItem(HINT_KEY, '1');
+        }, 1800);
       } else {
         hint.classList.remove('show');
         clearTimeout(hintTimer);
