@@ -267,7 +267,7 @@ svg#map-pref{position:relative;z-index:2;}
   .stat-l{font-size:8px;letter-spacing:0;}
   /* すまほ：タイトルを短く */
   .hd-title::before{content:'GPS市町村マップ ';}
-  .hd-title::after{content:'v1.3.2';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
+  .hd-title::after{content:'v1.3.3';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
   .hd-title span, .hd-title{font-size:0;}
   .hd-title::before{font-size:13px;font-family:var(--font-h);color:var(--gold-lt);}
   /* すまほ：使い方ボタンかくす */
@@ -349,7 +349,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.3.2</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.3.3</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
@@ -1245,7 +1245,7 @@ async function processPhoto(file) {
     const exif = await exifr.parse(file, { gps: true });
     if (!exif || exif.latitude == null || exif.longitude == null) {
       setErr(isAndroid()
-        ? 'GPS情報が見つかりませんでした。AndroidではOS仕様（プライバシー保護のため）によりGPS情報が読み取れない場合があります。iPhoneまたはPCからお試しください。'
+        ? 'GPS情報が見つかりませんでした。AndroidではOS仕様（プライバシー保護のため）によりGPS情報が読み取れない場合があります。Googleドライブ経由で読み込むと解決することがあります。iPhoneまたはPCからもお試しください。'
         : 'GPS情報が見つかりませんでした（GPS情報つき写真のみ対応）');
       showProg(false);
       return;
@@ -1302,6 +1302,7 @@ async function processPhoto(file) {
     updateSidebar(document.getElementById('pref-sel').value);
     updateStats();
     showProg(false);
+    setTimeout(() => updateMapHeight(), 50);
     toast(`📷 ${file.name} → ${muniName} に追加`);
   } catch(e) {
     showProg(false);
@@ -1952,10 +1953,19 @@ const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
 function showProg(v) {
   document.getElementById('prog').style.display = v ? 'block' : 'none';
   document.getElementById('map-pulse-overlay').style.display = v ? 'block' : 'none';
+  // スマホはloadingオーバーレイもつかう
+  if (window.matchMedia('(max-width: 768px)').matches) {
+    const loadEl = document.getElementById('loading');
+    loadEl.style.display = v ? 'flex' : 'none';
+  }
 }
 function setProgress(pct, txt) {
   document.getElementById('prog-fill').style.width = pct+'%';
   document.getElementById('prog-txt').textContent = txt;
+  // スマホはloadingオーバーレイのテキストもこうしん
+  if (window.matchMedia('(max-width: 768px)').matches) {
+    document.getElementById('load-txt').textContent = txt;
+  }
 }
 const isAndroid = () => /android/i.test(navigator.userAgent);
 
