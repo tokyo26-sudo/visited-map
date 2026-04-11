@@ -240,6 +240,9 @@ svg#map-pref{position:relative;z-index:2;}
 #load-txt{font-size:12px;color:var(--muted);text-align:center;max-width:260px;line-height:1.6;}
 .load-urls{font-size:10px;color:#3a4a5a;margin-top:6px;text-align:center;}
 
+/* PCではsp-file-areaをかくす */
+#sp-file-area{display:none;}
+
 /* ジェスチャーヒント */
 #gesture-hint{display:none;position:absolute;inset:0;z-index:400;background:rgba(10,13,18,.7);align-items:center;justify-content:center;flex-direction:column;gap:10px;pointer-events:none;}
 #gesture-hint.show{display:flex;}
@@ -262,7 +265,7 @@ svg#map-pref{position:relative;z-index:2;}
   .stat-n{font-size:16px;}
   .stat-l{font-size:8px;letter-spacing:0;}
   /* すまほ：タイトルを短く */
-  .hd-title::before{content:'GPS市町村マップ';}
+  .hd-title::before{content:'GPS市町村マップ v1.1.3';}
   .hd-title span, .hd-title{font-size:0;}
   .hd-title::before{font-size:13px;font-family:var(--font-h);color:var(--gold-lt);}
   /* すまほ：使い方ボタンかくす */
@@ -344,7 +347,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.1.2</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.1.3</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
@@ -1671,8 +1674,20 @@ async function handleFile(file) {
   try {
     const xml = await file.text();
 
-    // 重複チェック（JSONは大きいのでスキップ）
+    // セーブデータJSONをGPXよみこみにいれたときのチェック
     const isJsonFile = /\.json$/i.test(file.name);
+    if (isJsonFile) {
+      try {
+        const parsed = JSON.parse(xml);
+        if (parsed.version && parsed.visitedMap) {
+          showProg(false);
+          setErr('これはセーブデータです。「インポート（読み込み）」ボタンをご利用ください');
+          return;
+        }
+      } catch(e) { /* JSONでなければGoogleタイムラインとしてつづける */ }
+    }
+
+    // 重複チェック（JSONは大きいのでスキップ）
     let hash = null;
     if (!isJsonFile) {
       hash = await getFileHash(xml);
@@ -2747,18 +2762,15 @@ document.getElementById('btn-sp-export').addEventListener('click', () => {
 // スマホ用インポト
 document.getElementById('sp-importIn').addEventListener('change', async e => {
   document.getElementById('sp-drawer').classList.remove('open');
-  document.getElementById('importIn').dispatchEvent(new Event('change'));
   const file = e.target.files[0];
   if (!file) return;
-  // importInと同じ処理をよびだす
-  const text = await file.text();
-  try {
-    const data = JSON.parse(text);
-    if (!data._export && !data._worldExport) { toast('⚠️ このファイルは対応していません'); return; }
-    // PCのインポト処理をよびだす
-    document.getElementById('importIn').dispatchEvent(Object.assign(new Event('change'), {target: {files: [file]}}));
-  } catch(e) {}
   e.target.value = '';
+  // PCのimportInと同じしょり：DataTransferをつかってfilesをわたす
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const importIn = document.getElementById('importIn');
+  Object.defineProperty(importIn, 'files', { value: dt.files, configurable: true });
+  importIn.dispatchEvent(new Event('change'));
 });
 
 // スマホ用速度フィルタ（PCと同期）
