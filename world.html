@@ -236,8 +236,8 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title hd-title-pc">GPSログで訪れた国を可視化</div>
-    <div class="hd-title hd-title-sp">GPS訪問国マップ <span style="font-size:9px;color:var(--muted);font-family:var(--font);">v1.4.9</span></div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.4.9</span></div>
+    <div class="hd-title hd-title-sp">GPS訪問国マップ <span style="font-size:9px;color:var(--muted);font-family:var(--font);">v1.5.0</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.5.0</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -1417,17 +1417,40 @@ async function loadNaturalEarth50m() {
   return null;
 }
 
-// すまほ用：はんてい専用 ne_10m
-async function loadNaturalEarth10m() {
+// すまほ用：はんてい専用 ne_10m（ストリーミングよみこみ・MB表示つき）
+async function loadNaturalEarth10m(onProgress) {
   try {
     const res = await fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson');
     if (!res.ok) return null;
-    return await res.json();
+
+    // ストリーミングでよみこんでMBすうをカウント
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (onProgress) onProgress(received);
+    }
+
+    // Uint8Array→テキスト→JSON
+    const total = chunks.reduce((s, c) => s + c.length, 0);
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
+    const text = new TextDecoder().decode(merged);
+    return JSON.parse(text);
   } catch(e) {
     console.warn('ne_10m failed:', e);
     return null;
   }
 }
+
+// ne_10mデータ（すまほ用キャシュ）
+let naturalEarthData10m = null;
 
 function initCountryLayer(data) {
   if (!data) return;
@@ -1586,6 +1609,40 @@ function renderFileList() {
 // =====================================================
 // ファイル読み込みハンドラ
 // =====================================================
+// すまほ用：ne_10mをオンデマンドでよみこむ（まだよみこんでなければ）
+async function ensureNe10mForMobile() {
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  if (!isMobile) return; // PCはなにもしない
+  if (naturalEarthData10m) {
+    // すでによみこんである → naturalEarthDataをいれかえ
+    naturalEarthData = naturalEarthData10m;
+    buildBboxCache(naturalEarthData10m.features);
+    return;
+  }
+
+  // まだよみこんでない → モーダルひょうじしてよみこむ
+  const procOverlay = document.getElementById('proc-overlay');
+  const procTxt     = document.getElementById('proc-txt');
+  procTxt.textContent = '詳細地図データを読み込み中... 0.0MB受信済み';
+  procOverlay.classList.add('show');
+
+  const data10 = await loadNaturalEarth10m(received => {
+    const mb = (received / 1024 / 1024).toFixed(1);
+    procTxt.textContent = `詳細地図データを読み込み中... ${mb}MB受信済み`;
+  });
+
+  procOverlay.classList.remove('show');
+
+  if (data10) {
+    naturalEarthData10m = data10;
+    naturalEarthData = data10;
+    buildBboxCache(data10.features);
+    console.log('ne_10m loaded on demand');
+  } else {
+    toast('詳細地図データの読み込みに失敗しました。国判定ができない場合があります。');
+  }
+}
+
 async function handleFiles(files) {
   const procOverlay = document.getElementById('proc-overlay');
   const procTxt     = document.getElementById('proc-txt');
@@ -1593,6 +1650,24 @@ async function handleFiles(files) {
   const progFill    = document.getElementById('prog-fill');
   const progTxt     = document.getElementById('prog-txt');
   const errEl       = document.getElementById('err');
+  const isMobile    = window.matchMedia('(max-width: 768px)').matches;
+
+  // すまほ：くにはんていが必要なファイル（GPX/KML/JSON/しゃしん）があればne_10mをよみこむ
+  // セーブデータ（_worldExport）はのぞく
+  if (isMobile) {
+    const needsDetection = [...files].some(f => {
+      const ext = f.name.split('.').pop().toLowerCase();
+      if (ext === 'json') {
+        // セーブデータかどうかはよみこんでみないとわからないが、ひとまずよみこむ
+        // （セーブデータのばあいはensureNe10mは無駄よみになるが、1かいだけなのでOK）
+        return true;
+      }
+      return ['gpx','kml','jpg','jpeg'].includes(ext);
+    });
+    if (needsDetection) {
+      await ensureNe10mForMobile();
+    }
+  }
 
   errEl.style.display = 'none';
   prog.style.display = 'block';
@@ -1741,7 +1816,7 @@ function initMap() {
 
   // Natural Earth 読み込み（すまほ・PCでわける）
   if (isMobile) {
-    // すまほ：50mをさきによみこんでひょうじ→10mをバックグラウンドでよみこみはんてい
+    // すまほ：ne_50mだけよみこんでひょうじ。ne_10mはファイルよみこみじにオンデマンドで
     loadNaturalEarth50m().then(data50 => {
       document.getElementById('loading-overlay').style.display = 'none';
       if (data50) {
@@ -1750,15 +1825,6 @@ function initMap() {
       } else {
         toast('地図データ（国境線）の読み込みに失敗しました。地点は表示できます。');
       }
-      // バックグラウンドでne_10mをよみこんではんていようにセット
-      loadNaturalEarth10m().then(data10 => {
-        if (data10) {
-          // はんていようデタをいれかえ
-          buildBboxCache(data10.features);
-          naturalEarthData = data10;
-          console.log('ne_10m loaded for point-in-polygon detection');
-        }
-      });
     });
   } else {
     // PC：いままでどおりne_10mだけ
