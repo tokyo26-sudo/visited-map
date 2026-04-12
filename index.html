@@ -108,7 +108,7 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .err::after{content:' （タップして閉じる）';font-size:10px;color:#f8514988;}
 
 /* マップ */
-#map-wrap{flex:1;position:relative;overflow:hidden;}
+#map-wrap{flex:1;position:relative;overflow:hidden;overscroll-behavior:none;}
 svg#map{width:100%;background:#2860b0;position:relative;z-index:2;display:block;}
 svg#map-pref{position:relative;z-index:2;}
 
@@ -267,7 +267,7 @@ svg#map-pref{position:relative;z-index:2;}
   .stat-l{font-size:8px;letter-spacing:0;}
   /* すまほ：タイトルを短く */
   .hd-title::before{content:'GPS市町村マップ ';}
-  .hd-title::after{content:'v1.3.5';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
+  .hd-title::after{content:'v1.3.6';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
   .hd-title span, .hd-title{font-size:0;}
   .hd-title::before{font-size:13px;font-family:var(--font-h);color:var(--gold-lt);}
   /* すまほ：使い方ボタンかくす */
@@ -349,7 +349,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.3.5</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.3.6</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
