@@ -267,7 +267,7 @@ svg#map-pref{position:relative;z-index:2;}
   .stat-l{font-size:8px;letter-spacing:0;}
   /* すまほ：タイトルを短く */
   .hd-title::before{content:'GPS市町村マップ ';}
-  .hd-title::after{content:'v1.3.8';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
+  .hd-title::after{content:'v1.3.9';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
   .hd-title span, .hd-title{font-size:0;}
   .hd-title::before{font-size:13px;font-family:var(--font-h);color:var(--gold-lt);}
   /* すまほ：使い方ボタンかくす */
@@ -349,7 +349,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.3.8</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.3.9</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
@@ -480,9 +480,9 @@ svg#map-pref{position:relative;z-index:2;}
 
   <div class="sec">
     <div class="sec-h">💾 セーブデータ</div>
-    <button class="btn" id="btn-export">📤 エクスポート（保存）</button>
+    <button class="btn" id="btn-export">📤 セーブデータ保存<br><span style="font-size:10px;color:var(--muted);">（エクスポート）</span></button>
     <div style="position:relative;margin-top:5px;">
-      <button class="btn" id="btn-import-trigger">📥 インポート（読み込み）</button>
+      <button class="btn" id="btn-import-trigger">📥 セーブデータ読込<br><span style="font-size:10px;color:var(--muted);">（インポート）</span></button>
       <input type="file" accept=".json" id="importIn" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;">
     </div>
   </div>
@@ -639,9 +639,9 @@ svg#map-pref{position:relative;z-index:2;}
 
     <div class="sec">
       <div class="sec-h">💾 セーブデータ</div>
-      <button class="btn" id="btn-sp-export">📤 エクスポート（保存）</button>
+      <button class="btn" id="btn-sp-export">📤 セーブデータ保存<br><span style="font-size:10px;color:var(--muted);">（エクスポート）</span></button>
       <div style="position:relative;margin-top:5px;">
-        <button class="btn" id="btn-sp-import-trigger">📥 インポート（読み込み）</button>
+        <button class="btn" id="btn-sp-import-trigger">📥 セーブデータ読込<br><span style="font-size:10px;color:var(--muted);">（インポート）</span></button>
         <input type="file" accept=".json" id="sp-importIn" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;">
       </div>
     </div>
@@ -2516,12 +2516,14 @@ document.querySelectorAll('.leg-row.clickable').forEach(row => {
 // 全て表示／全て非表示
 document.getElementById('btn-show-all').addEventListener('click', () => {
   fileList.forEach(f => f.enabled = true);
+  photoList.forEach(p => p.enabled = true);
   rebuildVisitedMap();
   updateFileList();
   if (features.length) { redrawMuni(); updateSidebar(document.getElementById('pref-sel').value); updateStats(); }
 });
 document.getElementById('btn-hide-all').addEventListener('click', () => {
   fileList.forEach(f => f.enabled = false);
+  photoList.forEach(p => p.enabled = false);
   rebuildVisitedMap();
   updateFileList();
   if (features.length) { redrawMuni(); updateSidebar(document.getElementById('pref-sel').value); updateStats(); }
