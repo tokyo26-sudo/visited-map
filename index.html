@@ -267,7 +267,7 @@ svg#map-pref{position:relative;z-index:2;}
   .stat-l{font-size:8px;letter-spacing:0;}
   /* すまほ：タイトルを短く */
   .hd-title::before{content:'GPS市町村マップ ';}
-  .hd-title::after{content:'v1.3.6';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
+  .hd-title::after{content:'v1.3.7';font-size:9px;color:var(--muted);font-family:var(--font);vertical-align:middle;margin-left:1px;}
   .hd-title span, .hd-title{font-size:0;}
   .hd-title::before{font-size:13px;font-family:var(--font-h);color:var(--gold-lt);}
   /* すまほ：使い方ボタンかくす */
@@ -349,7 +349,7 @@ svg#map-pref{position:relative;z-index:2;}
   <span class="logo">🗾</span>
   <div>
     <div class="hd-title">GPSのログで訪れた市区町村を可視化</div>
-    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.3.6</span></div>
+    <div class="hd-sub">GPSのログデータを読み込んで、訪れた市区町村を色分け表示 <span style="color:var(--muted);font-size:9px;">v1.3.7</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-visited">0</div><div class="stat-l" id="stat-l-visited">訪問した市区町村</div></div>
@@ -2765,12 +2765,6 @@ resizeSvg();
         clearTimeout(hintTimer);
       }
     }, {passive: true});
-    // ブラウザのピンチズームをふせぐ（がめんぜんたいがおおきくなるもんだいのかいけつ）
-    mapEl.addEventListener('touchmove', e => {
-      if (e.touches.length >= 2) {
-        e.preventDefault();
-      }
-    }, {passive: false});
   }
 })();
 
