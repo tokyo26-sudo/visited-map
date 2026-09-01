@@ -236,8 +236,8 @@ aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
   <span class="logo">🌍</span>
   <div>
     <div class="hd-title hd-title-pc">GPSログで訪れた国を可視化</div>
-    <div class="hd-title hd-title-sp">GPS訪問国マップ <span style="font-size:9px;color:var(--muted);font-family:var(--font);">v1.5.0</span></div>
-    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.5.0</span></div>
+    <div class="hd-title hd-title-sp">GPS訪問国マップ <span style="font-size:9px;color:var(--muted);font-family:var(--font);">v1.5.1</span></div>
+    <div class="hd-sub">GPSログデータを読み込んで、訪れた国と地点を表示 <span style="color:var(--muted);font-size:9px;">v1.5.1</span></div>
   </div>
   <div class="hd-stats">
     <div class="stat"><div class="stat-n" id="s-countries">0</div><div class="stat-l">訪問した国</div></div>
@@ -1804,10 +1804,9 @@ function initMap() {
   });
 
   // タイルレイヤ（ダクテマ）
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 19
+  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 20
   }).addTo(map);
 
   // マーカレイヤ（さいしょからmapにadd）
