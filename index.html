@@ -568,7 +568,7 @@ svg#map-pref{position:relative;z-index:2;}
     <span>✌️</span>
     <p>指2本で地図を操作<br>指1本でページスクロール</p>
   </div>
-  <svg id="map"></svg>
+  <svg id="map" tabindex="0" style="outline:none;"></svg>
   <svg id="map-pref" style="display:none;width:100%;height:100%;background:#2860b0;"></svg>
   <div class="zoom-ctrl">
     <button class="zoom-btn" id="btn-zin">＋</button>
@@ -1055,8 +1055,6 @@ function updateMapHeight() {
 }
 updateHeaderHeight();
 updateMapHeight();
-resizeSvg();
-initProj();
 window.addEventListener('resize', () => {
   updateHeaderHeight();
   updateMapHeight();
@@ -1809,6 +1807,7 @@ async function handleFile(file) {
     document.getElementById('btn-clear').style.display = 'block';
     const totalVisited = features.filter(f => (visitedMap.get(getCode(f)) || 0) > 0).length;
     toast(`✅ ${points.length}ポイント読み込み — 累計 ${totalVisited}市区町村を訪問`);
+    svg.node().focus();
   } catch(e) {
     showProg(false); setErr('読み込み失敗: ' + e.message); console.error(e);
   }
@@ -2163,6 +2162,8 @@ document.getElementById('importIn').addEventListener('change', async e => {
     document.getElementById('btn-clear').style.display = 'block';
     const saved = data.savedAt ? `（${data.savedAt.slice(0,10)}保存）` : '';
     toast(`📥 インポート完了${saved} — ${visitedMap.size}市区町村`);
+    // インポート後、SVGにフォーカスを戻してzoomイベントを確実に受け取れるようにする
+    svg.node().focus();
 
     // 時刻ありなのにcacheFiltered400がないファイルがあれば警告
     const needsReload = fileList.some(f => f.hasTime && !f.cacheFiltered400);
